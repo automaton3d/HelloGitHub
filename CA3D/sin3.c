@@ -14,12 +14,18 @@
  * preserved verbatim.
  */
 #include <SDL3/SDL.h>
+#include <math.h>
 #include <stdio.h>
 
-#define L           101
-#define WINDOW_SIZE 1000
-#define MAX_R2      (3 * (L / 2) * (L / 2))
-#define R           (L / 2 - 1)   /* cavity radius = 49 */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#define L                101
+#define WINDOW_SIZE      1000
+#define MAX_R2           (3 * (L / 2) * (L / 2))
+#define R                (L / 2 - 1)   /* cavity radius = 49 */
+#define REF_AMPLITUDE_PX 200           /* pixel amplitude of reference sine */
 
 typedef struct
 {
@@ -206,6 +212,29 @@ void render(SDL_Renderer* r)
         int y = py0 - (v / scale);
 
         if (x < WINDOW_SIZE && y > 0) SDL_RenderPoint(r, x, y);
+    }
+
+    /* ---- reference sine profile ---- */
+    /* The lowest Dirichlet eigenmode of the scalar wave equation in a
+     * spherical cavity of radius R is j0(pi r / R), whose |u| envelope is
+     * |sin(pi r / R)|. Overlay that pure sine (in yellow) over the averaged
+     * |u| radial curve so the CA response can be visually compared against
+     * the analytic reference. The overlay is a rendering-only helper and
+     * deliberately lives outside the "simple FSM" CA kernel. */
+    SDL_SetRenderDrawColor(r, 255, 255, 0, 255);
+
+    for (int i = 0; i <= R2; i++)
+    {
+        /* same x projection as the green curve: x = px0 + (r^2 >> 2) */
+        int x = px0 + (i >> 2);
+        if (x >= WINDOW_SIZE) break;
+
+        float rr = sqrtf((float) i);
+        float s  = sinf((float) M_PI * rr / (float) R);
+        if (s < 0.0f) s = -s;
+
+        int y = py0 - (int) (s * (float) REF_AMPLITUDE_PX);
+        if (y > 0 && y < WINDOW_SIZE) SDL_RenderPoint(r, x, y);
     }
 
     SDL_RenderPresent(r);
