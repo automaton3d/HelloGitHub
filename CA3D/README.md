@@ -22,13 +22,21 @@ Both share:
 - Point impulse at the center: `u = u_old = 2000`.
 - Render: `z = L/2` grayscale slice + green radial plot of the per-`r²` average of `|u|`.
 
+`sin3.c` also overlays a yellow **reference sine profile** on the radial plot —
+`|sin(π·r/R)|`, the `|u|` envelope of the lowest Dirichlet eigenmode `j₀(π·r/R)`
+in a spherical cavity of radius `R`. It is drawn on the same `r²` x-axis as the
+green curve so the CA response can be compared at a glance against the analytic
+reference. The overlay is a pure rendering helper; the CA kernel itself still
+obeys the "simple FSM" discipline.
+
 ## Build
 
-SDL3 is required (https://libsdl.org/).
+SDL3 is required (https://libsdl.org/). `sin3.c` also links against libm for
+`sinf`/`sqrtf` used by the reference-sine overlay.
 
 ```sh
 cc -std=c11 -O2 -Wall sin2.c -o sin2 $(pkg-config --cflags --libs sdl3)
-cc -std=c11 -O2 -Wall sin3.c -o sin3 $(pkg-config --cflags --libs sdl3)
+cc -std=c11 -O2 -Wall sin3.c -o sin3 $(pkg-config --cflags --libs sdl3) -lm
 ```
 
 ## The spherical-mask trick in `sin3.c`
