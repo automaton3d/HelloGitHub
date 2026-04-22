@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build (${{ matrix.build-system }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build-system: [cmake, make]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with CMake
+        if: matrix.build-system == 'cmake'
+        run: |
+          cmake -S . -B build
+          cmake --build build
+          ./build/hello
+
+      - name: Build with Make
+        if: matrix.build-system == 'make'
+        run: |
+          make
+          ./hello
+
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: pre-commit/action@v3.0.1
