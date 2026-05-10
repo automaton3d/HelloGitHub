@@ -324,69 +324,16 @@ void renderWavefront()
         return;
 
     // ============================================================
-    // ZERO-LAG TOMOGRAPHY PATH
+    // VOLUME PATH (with optional tomography filtering)
     // ============================================================
 
-    if (tomoEnable &&
-        tomoEnable->getState())
-    {
-        const auto& snapshot =
-            tomography::getSnapshot();
-
-        if (snapshot.empty())
-            return;
-
-        const float CELL_SPACING =
-            0.5f / static_cast<float>(EL);
-
-        const float VOXEL_SIZE =
-            CELL_SPACING / 4.0f;
-
-        glm::mat4 view =
-            ctx.camera.GetViewMatrix();
-
-        glm::mat4 projection =
-            framework::mProjection_;
-
-        glm::mat4 model(1.0f);
-
-        glm::mat4 mvp =
-            projection * view * model;
-
-        std::vector<glm::vec3> faces;
-
-        for (const auto& v : snapshot)
-        {
-            auto cube =
-                makeCube(
-                    v.position.x,
-                    v.position.y,
-                    v.position.z,
-                    VOXEL_SIZE);
-
-            faces.insert(
-                faces.end(),
-                cube.begin(),
-                cube.end());
-        }
-
-        drawQuads(
-            faces,
-            glm::vec3(1.0f, 0.5f, 0.0f),
-            mvp);
-
-        return;
-    }
-
-    // ============================================================
-    // FULL VOLUME PATH
-    // ============================================================
+    const bool tomoActive = (tomoEnable && tomoEnable->getState());
 
     const float CELL_SPACING =
         0.5f / static_cast<float>(EL);
 
     const float VOXEL_SIZE =
-        CELL_SPACING / 4.0f;
+        tomoActive ? CELL_SPACING * 0.9f : CELL_SPACING / 4.0f;
 
     const int CENTER_INT =
         EL / 2;
@@ -465,6 +412,8 @@ void renderWavefront()
         {
             for (unsigned z = 0; z < EL; ++z)
             {
+                if (tomoActive && !tomography::isVoxelVisible(x, y, z))
+                    continue;
                 appendVoxel(x, y, z);
             }
         }
@@ -773,9 +722,42 @@ void renderWavefront()
     }
     if (data3D[7].getState()) renderAxes();
     if (data3D[8].getState()) renderGrid();
-    if (tomoEnable && tomoEnable->getState()) 
+    if (tomoEnable && tomoEnable->getState() && EL > 0)
     {
-      tomography::renderTomoPlane();
+      const float CELL_SPACING = 0.5f / static_cast<float>(EL);
+      const int CENTER_INT = EL / 2;
+      float half = (EL / 2) * CELL_SPACING;
+
+      float pos;
+      int plane = 0;
+      if (tomoDirs.size() >= 3) {
+        if (tomoDirs[0].isSelected())      { plane = 0; pos = ((int)::tomo_z - CENTER_INT) * CELL_SPACING; }
+        else if (tomoDirs[1].isSelected()) { plane = 1; pos = ((int)::tomo_x - CENTER_INT) * CELL_SPACING; }
+        else                               { plane = 2; pos = ((int)::tomo_y - CENTER_INT) * CELL_SPACING; }
+      } else {
+        pos = 0.0f;
+      }
+
+      std::vector<glm::vec3> quad;
+      if (plane == 0) {
+        quad = { {-half,-half,pos}, {half,-half,pos}, {half,half,pos}, {-half,half,pos} };
+      } else if (plane == 1) {
+        quad = { {pos,-half,-half}, {pos,half,-half}, {pos,half,half}, {pos,-half,half} };
+      } else {
+        quad = { {-half,pos,-half}, {half,pos,-half}, {half,pos,half}, {-half,pos,half} };
+      }
+
+      glm::mat4 view = ctx.camera.GetViewMatrix();
+      glm::mat4 projection = framework::mProjection_;
+      glm::mat4 mvp = projection * view * glm::mat4(1.0f);
+
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      glDepthMask(GL_FALSE);
+
+      drawQuads(quad, glm::vec3(0.3f, 0.6f, 1.0f), mvp);
+
+      glDepthMask(GL_TRUE);
     }
   }
 

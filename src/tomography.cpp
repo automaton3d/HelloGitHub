@@ -50,8 +50,15 @@ void init()
     state.sliderPosition = 0.5f;
     state.lastUpdatedPosition = -1.0f;
 
-    state.needsUpdate = true;
+    const int EL = automaton::EL;
+    if (EL > 0) {
+        unsigned center = static_cast<unsigned>(0.5f * (EL - 1) + 0.5f);
+        tomo_x = center;
+        tomo_y = center;
+        tomo_z = center;
+    }
 
+    state.needsUpdate = true;
     state.initialized = true;
 }
 
@@ -67,6 +74,7 @@ void shutdown()
 void requestUpdate()
 {
     state.needsUpdate = true;
+    tomographyNeedsUpdate = true;
 }
 
 float getSlicePosition()
@@ -80,6 +88,14 @@ void setSlicePosition(float value)
     if (value > 1.0f) value = 1.0f;
 
     state.sliderPosition = value;
+
+    const int EL = automaton::EL;
+    if (EL > 0) {
+        unsigned idx = static_cast<unsigned>(value * (EL - 1) + 0.5f);
+        tomo_x = idx;
+        tomo_y = idx;
+        tomo_z = idx;
+    }
 
     state.needsUpdate = true;
 }
