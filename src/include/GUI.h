@@ -84,6 +84,7 @@ namespace framework
 
   // Internal rendering methods
   void renderAxes();
+  void renderGizmo();
   void renderCenter();
   void renderClear();
   void renderCube();

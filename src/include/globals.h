@@ -157,6 +157,16 @@ extern AxisProjection gAxisProj[3];
 extern bool gAxisProjValid;
 extern bool helpHover;
 
+// Gizmo (miniature axis widget in top-right corner)
+extern bool showGizmo;
+
+struct GizmoProjection {
+    float cx, cy;           // center of gizmo in screen (GLFW) coordinates
+    float ex[3], ey[3];     // endpoint of each axis in screen coords
+    float radius;           // gizmo radius in pixels
+};
+extern GizmoProjection gGizmoProj;
+
 namespace framework {
     extern float axisLength;
 }

@@ -14,6 +14,7 @@
 #include "app_context.h"
 #include "render_pipeline.h"
 #include "draw_utils.h"
+#include "projection_manager.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -51,59 +52,7 @@ namespace framework {
       return ((a % b) + b) % b;
   }
 
-  static void renderTomographySnapshot()
-{
-    if (!tomoEnable)
-        return;
 
-    if (!tomoEnable->getState())
-        return;
-
-    const auto& snapshot =
-        tomography::getSnapshot();
-
-    if (snapshot.empty())
-        return;
-
-    const float CELL_SPACING =
-        0.5f / static_cast<float>(automaton::EL);
-
-    const float VOXEL_SIZE =
-        CELL_SPACING / 4.0f;
-
-    std::vector<glm::vec3> faces;
-
-    for (const auto& v : snapshot)
-    {
-        auto cube =
-            makeCube(
-                v.position.x,
-                v.position.y,
-                v.position.z,
-                VOXEL_SIZE);
-
-        faces.insert(
-            faces.end(),
-            cube.begin(),
-            cube.end());
-    }
-
-    glm::mat4 view =
-        ctx.camera.GetViewMatrix();
-
-    glm::mat4 projection =
-        framework::mProjection_;
-
-    glm::mat4 model(1.0f);
-
-    glm::mat4 mvp =
-        projection * view * model;
-
-    drawQuads(
-        faces,
-        glm::vec3(1.0f, 0.5f, 0.0f),
-        mvp);
-}
 
   // ---------------------------------------------------------------------
   // Helpers: shader-based primitive drawing
@@ -333,7 +282,7 @@ void renderWavefront()
         0.5f / static_cast<float>(EL);
 
     const float VOXEL_SIZE =
-        tomoActive ? CELL_SPACING * 0.9f : CELL_SPACING / 4.0f;
+        CELL_SPACING / 4.0f;
 
     const int CENTER_INT =
         EL / 2;
@@ -349,80 +298,44 @@ void renderWavefront()
     glm::mat4 mvp =
         projection * view * model;
 
-    std::vector<glm::vec3> faces;
-
-    auto appendVoxel =
-    [&](unsigned x,
-        unsigned y,
-        unsigned z)
-    {
-        size_t idx =
-            static_cast<size_t>(x) *
-            automaton::L2 +
-            static_cast<size_t>(y) *
-            EL +
-            z;
-
-        if (idx >= voxels.size())
-            return;
-
-        uint32_t color =
-            voxels[idx];
-
-        if (color == 0)
-            return;
-
-        float px =
-            (mod(
-                static_cast<int>(x) +
-                gConfig.view.vis_dx,
-                EL) - CENTER_INT)
-            * CELL_SPACING;
-
-        float py =
-            (mod(
-                static_cast<int>(y) +
-                gConfig.view.vis_dy,
-                EL) - CENTER_INT)
-            * CELL_SPACING;
-
-        float pz =
-            (mod(
-                static_cast<int>(z) +
-                gConfig.view.vis_dz,
-                EL) - CENTER_INT)
-            * CELL_SPACING;
-
-        auto cube =
-            makeCube(
-                px,
-                py,
-                pz,
-                VOXEL_SIZE);
-
-        faces.insert(
-            faces.end(),
-            cube.begin(),
-            cube.end());
-    };
+    // Group voxels by color so each scenario renders with correct colors
+    std::map<uint32_t, std::vector<glm::vec3>> colorBuckets;
 
     for (unsigned x = 0; x < EL; ++x)
+    for (unsigned y = 0; y < EL; ++y)
+    for (unsigned z = 0; z < EL; ++z)
     {
-        for (unsigned y = 0; y < EL; ++y)
-        {
-            for (unsigned z = 0; z < EL; ++z)
-            {
-                if (tomoActive && !tomography::isVoxelVisible(x, y, z))
-                    continue;
-                appendVoxel(x, y, z);
-            }
-        }
+        if (tomoActive && !tomography::isVoxelVisible(x, y, z))
+            continue;
+
+        size_t idx =
+            static_cast<size_t>(x) * automaton::L2 +
+            static_cast<size_t>(y) * EL + z;
+
+        if (idx >= voxels.size())
+            continue;
+
+        uint32_t color = voxels[idx];
+        if (color == 0)
+            continue;
+
+        float px = (mod(static_cast<int>(x) + gConfig.view.vis_dx, EL) - CENTER_INT) * CELL_SPACING;
+        float py = (mod(static_cast<int>(y) + gConfig.view.vis_dy, EL) - CENTER_INT) * CELL_SPACING;
+        float pz = (mod(static_cast<int>(z) + gConfig.view.vis_dz, EL) - CENTER_INT) * CELL_SPACING;
+
+        auto cube = makeCube(px, py, pz, VOXEL_SIZE);
+        colorBuckets[color].insert(
+            colorBuckets[color].end(), cube.begin(), cube.end());
     }
 
-    drawQuads(
-        faces,
-        glm::vec3(1.0f, 0.5f, 0.0f),
-        mvp);
+    // Format: (a << 24) | (r << 16) | (g << 8) | b
+    for (auto& [packed, faces] : colorBuckets)
+    {
+        float r = static_cast<float>((packed >> 16) & 0xFF) / 255.0f;
+        float g = static_cast<float>((packed >>  8) & 0xFF) / 255.0f;
+        float b = static_cast<float>( packed        & 0xFF) / 255.0f;
+        drawQuads(faces, glm::vec3(r, g, b), mvp);
+    }
 }
 
   void renderCenters()
@@ -534,19 +447,7 @@ void renderWavefront()
       hudText.RenderText("z", 0.0f, -labelOffset + axisLength, 0.7f,
                          glm::vec3(0.3f, 0.3f, 0.8f), gViewport[2], gViewport[3]);
 
-      // === 4. RENDER THUMB INDICATOR (screen-space version – never lags) ===
-      if (thumb.active && gAxisProjValid)
-      {
-          float t = glm::clamp(thumb.position / axisLength, 0.0f, 1.0f);
-
-          float sx = gAxisProj[thumb.axis].x0 + t * (gAxisProj[thumb.axis].x1 - gAxisProj[thumb.axis].x0);
-          float sy = gAxisProj[thumb.axis].y0 + t * (gAxisProj[thumb.axis].y1 - gAxisProj[thumb.axis].y0);
-
-          hudText.RenderText("●", sx - 8, sy - 8, 1.0f,
-                             glm::vec3(0.0f, 1.0f, 1.0f), gViewport[2], gViewport[3]);
-      }
-
-      // === 5. CACHE AXIS PROJECTIONS FOR CLICK DETECTION ===
+      // === 4. CACHE AXIS PROJECTIONS ===
       // Helper lambda to project 3D world position to 2D screen coordinates
       auto project3Dto2D = [&](const glm::vec3& worldPos) -> glm::vec2 {
           glm::vec4 clipSpace = mvp * glm::vec4(worldPos, 1.0f);
@@ -698,6 +599,136 @@ void renderWavefront()
   }
 
   /**
+   * Renders the XYZ gizmo in the top-right corner.
+   * A miniature axis cross that follows camera rotation, with draggable
+   * handles controlling vis_dx/dy/dz (visual wrapping offset).
+   * Called from renderHUD() in 2D overlay mode.
+   */
+  void renderGizmo()
+  {
+      if (!showGizmo) return;
+
+      const glm::mat4& P = ProjectionManager::instance().get2DOrtho();
+
+      // Gizmo position and size (top-right, left of right panel)
+      // Ortho uses top-left origin: y=0 at top, same as GLFW
+      const float gizmoRadius = 55.0f;
+      const float cx = (float)gViewport[2] - 285.0f;
+      const float cy = 85.0f;  // near top
+
+      // Camera rotation (extract 3x3 from view matrix, no translation)
+      glm::mat3 rot(ctx.camera.GetViewMatrix());
+
+      // Axis directions in view space
+      // rot * worldAxis: x maps to screen-right, y maps to screen-up
+      // But screen y increases DOWNWARD (top-left origin), so negate y
+      glm::vec3 rawDirs[3] = {
+          rot * glm::vec3(1, 0, 0),
+          rot * glm::vec3(0, 1, 0),
+          rot * glm::vec3(0, 0, 1),
+      };
+
+      glm::vec3 colors[3] = {
+          {1.0f, 0.3f, 0.3f},  // X red
+          {0.3f, 1.0f, 0.3f},  // Y green
+          {0.4f, 0.4f, 1.0f},  // Z blue
+      };
+      const char* labels[3] = {"X", "Y", "Z"};
+
+      // Store gizmo projections for click detection (in screen/GLFW coords)
+      gGizmoProj.cx = cx;
+      gGizmoProj.cy = cy;
+      gGizmoProj.radius = gizmoRadius;
+
+      // Draw background circle
+      {
+          const int seg = 32;
+          std::vector<glm::vec2> circle;
+          circle.reserve(seg + 2);
+          circle.push_back({cx, cy});
+          for (int i = 0; i <= seg; ++i)
+          {
+              float a = 2.0f * 3.14159265f * (float)i / (float)seg;
+              circle.push_back({
+                  cx + cosf(a) * (gizmoRadius + 5.0f),
+                  cy + sinf(a) * (gizmoRadius + 5.0f)
+              });
+          }
+          drawTriangleFan2D(circle, glm::vec3(0.05f, 0.05f, 0.12f), P);
+      }
+
+      // Draw axes and handles
+      for (int axis = 0; axis < 3; ++axis)
+      {
+          // Screen-space endpoint (negate y for top-left origin)
+          float endX = cx + rawDirs[axis].x * gizmoRadius;
+          float endY = cy - rawDirs[axis].y * gizmoRadius;
+
+          // Store for click detection (already in GLFW coords)
+          gGizmoProj.ex[axis] = endX;
+          gGizmoProj.ey[axis] = endY;
+
+          // Draw axis line
+          drawThickLine2D(cx, cy, endX, endY, 2.0f, colors[axis], P);
+
+          // Draw axis label at endpoint
+          // RenderText uses y-up (0=bottom), while drawing uses y-down (0=top)
+          float lx = endX + rawDirs[axis].x * 10.0f;
+          float ly_screen = endY - rawDirs[axis].y * 10.0f;
+          float ly_text = (float)gViewport[3] - ly_screen;
+          hudText.RenderText(labels[axis], lx, ly_text, 0.35f,
+              colors[axis], gViewport[2], gViewport[3]);
+
+          // Handle position based on current vis offset
+          int visOffset = 0;
+          if (axis == 0) visOffset = gConfig.view.vis_dx;
+          else if (axis == 1) visOffset = gConfig.view.vis_dy;
+          else visOffset = gConfig.view.vis_dz;
+
+          // Map offset to parametric t [-1, 1] on the gizmo axis
+          float t = 0.0f;
+          if (EL > 0)
+              t = glm::clamp((float)visOffset / ((float)EL * 0.5f), -1.0f, 1.0f);
+
+          float handleX = cx + rawDirs[axis].x * gizmoRadius * t;
+          float handleY = cy - rawDirs[axis].y * gizmoRadius * t;
+
+          // Handle: small filled circle
+          const int hseg = 12;
+          const float handleR = 5.0f;
+          std::vector<glm::vec2> handle;
+          handle.reserve(hseg + 2);
+          handle.push_back({handleX, handleY});
+          for (int i = 0; i <= hseg; ++i)
+          {
+              float a = 2.0f * 3.14159265f * (float)i / (float)hseg;
+              handle.push_back({
+                  handleX + cosf(a) * handleR,
+                  handleY + sinf(a) * handleR
+              });
+          }
+          drawTriangleFan2D(handle, colors[axis], P);
+      }
+
+      // Draw origin dot
+      {
+          const int oseg = 8;
+          std::vector<glm::vec2> originDot;
+          originDot.reserve(oseg + 2);
+          originDot.push_back({cx, cy});
+          for (int i = 0; i <= oseg; ++i)
+          {
+              float a = 2.0f * 3.14159265f * (float)i / (float)oseg;
+              originDot.push_back({
+                  cx + cosf(a) * 3.0f,
+                  cy + sinf(a) * 3.0f
+              });
+          }
+          drawTriangleFan2D(originDot, glm::vec3(0.8f), P);
+      }
+  }
+
+  /**
    * Renders 3D objects
    * A transformação MVP deve ser gerenciada pelo GUIrenderer antes de chamar esta função
    */
@@ -705,23 +736,9 @@ void renderWavefront()
   {
     glEnable(GL_DEPTH_TEST);
 
-    if (gConfig.simulation.scenario >= 0)
-    {
-      if (data3D[0].getState()) renderWavefront();
-      if (data3D[1].getState()) renderMomentum(ctx);
-      if (data3D[2].getState()) renderSpin();
-      if (data3D[3].getState()) renderSineMask();
-      if (data3D[4].getState()) renderHunting();
-      if (data3D[5].getState()) renderCenters();
-    }
-    if (data3D.size() > 6 && data3D[6].getState())
-    {
-      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-      renderCube();
-      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    }
-    if (data3D[7].getState()) renderAxes();
-    if (data3D[8].getState()) renderGrid();
+    // Draw tomo plane FIRST (before voxels) so voxels render on top.
+    // glDepthMask(GL_FALSE) prevents the plane from writing to the depth
+    // buffer, so subsequent voxels always pass the depth test.
     if (tomoEnable && tomoEnable->getState() && EL > 0)
     {
       const float CELL_SPACING = 0.5f / static_cast<float>(EL);
@@ -759,6 +776,24 @@ void renderWavefront()
 
       glDepthMask(GL_TRUE);
     }
+
+    if (gConfig.simulation.scenario >= 0)
+    {
+      if (data3D[0].getState()) renderWavefront();
+      if (data3D[1].getState()) renderMomentum(ctx);
+      if (data3D[2].getState()) renderSpin();
+      if (data3D[3].getState()) renderSineMask();
+      if (data3D[4].getState()) renderHunting();
+      if (data3D[5].getState()) renderCenters();
+    }
+    if (data3D.size() > 6 && data3D[6].getState())
+    {
+      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+      renderCube();
+      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
+    if (data3D[7].getState()) renderAxes();
+    if (data3D[8].getState()) renderGrid();
   }
 
 } // namespace framework

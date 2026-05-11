@@ -11,18 +11,18 @@ namespace framework
 {
   // Texto de ajuda da interface
   const std::vector<std::string> ui_help = {
-    "           c: Print camera Eye, Center, Up",
-    "           r: Reset view",
-    "           t: Toggle right button to do Pan",
-    "              or First-Person",
-    "     x, y, z: Snap camera to axis",
-    "  Left-Click: Rotate",
+    "c: Print camera Eye, Center, Up",
+    "r: Reset view",
+    "t: Toggle Pan / First-Person",
+    "x, y, z: Snap camera to axis",
+    "Left-Click: Rotate",
     "Middle-Click: Pan or First-Person",
-    " Right-Click: Roll",
+    "Right-Click: Roll",
     "Scroll-Wheel: Dolly (zoom)",
-    "           P: Pause the simulation",
-    "          F1: Close on screen help",
-    "      Escape: EXIT"
+    "G: Toggle wrapping gizmo",
+    "P: Pause the simulation",
+    "F1: Toggle keyboard shortcuts",
+    "Escape: EXIT"
   };
 
   // Texto de ajuda para gravação/replay

@@ -31,6 +31,7 @@ void toggleFullscreen(GLFWwindow* window);
 namespace framework
 {
     extern bool showExitDialog;
+    extern bool showHelp;
     extern HSlider hslider;
     extern VSlider vslider;
     extern Tickbox *scenarioHelpToggle;
@@ -273,33 +274,33 @@ else if (tomoEnable && tomoEnable->getState())
                             }
                         }
 
-                        // Axis thumb detection
-                        // === AXIS THUMB PICKING – FINAL WORKING VERSION ===
-                        if ((pause || currentMode == REPLAY))
+                        // Gizmo thumb detection (miniature axis widget)
+                        if (showGizmo && (pause || currentMode == REPLAY))
                         {
-                            if (gAxisProjValid)
-                            {
-                                float mx = static_cast<float>(xpos);
-                                float my = static_cast<float>(ypos);
-                                const float threshold = 20.0f;
+                            float mx = static_cast<float>(xpos);
+                            float my = static_cast<float>(ypos);
 
+                            // Check if click is near the gizmo area
+                            float toCenterDist = std::hypot(mx - gGizmoProj.cx, my - gGizmoProj.cy);
+                            if (toCenterDist < gGizmoProj.radius * 1.5f)
+                            {
+                                const float threshold = 15.0f;
                                 int   bestAxis = -1;
                                 float bestT    = 0.0f;
                                 float bestDist = threshold;
 
                                 for (int axis = 0; axis < 3; ++axis)
                                 {
-                                    const AxisProjection& ap = gAxisProj[axis];
-                                    float dx = ap.x1 - ap.x0;
-                                    float dy = ap.y1 - ap.y0;
+                                    float dx = gGizmoProj.ex[axis] - gGizmoProj.cx;
+                                    float dy = gGizmoProj.ey[axis] - gGizmoProj.cy;
                                     float len2 = dx*dx + dy*dy;
                                     if (len2 < 1e-6f) continue;
 
-                                    float t = ((mx - ap.x0)*dx + (my - ap.y0)*dy) / len2;
+                                    float t = ((mx - gGizmoProj.cx)*dx + (my - gGizmoProj.cy)*dy) / len2;
                                     t = glm::clamp(t, 0.0f, 1.0f);
 
-                                    float px = ap.x0 + t * dx;
-                                    float py = ap.y0 + t * dy;
+                                    float px = gGizmoProj.cx + t * dx;
+                                    float py = gGizmoProj.cy + t * dy;
                                     float dist = std::hypot(mx - px, my - py);
 
                                     if (dist < bestDist)
@@ -317,39 +318,24 @@ else if (tomoEnable && tomoEnable->getState())
                                     thumb.dragging       = true;
                                     thumb.startMouseX    = xpos;
                                     thumb.startMouseY    = ypos;
-
-                                    // Store initial position as parametric t (0.0 to 1.0)
                                     thumb.initialPosition = bestT;
-                                    thumb.position        = bestT * axisLength;  // For rendering
-
-                                    // Store starting offsets as FLOATS for smooth interpolation
-                                    thumb.startOffsetF[0] = gConfig.view.vis_dx;  // or vis_offset_x if using floats
-                                    thumb.startOffsetF[1] = gConfig.view.vis_dy;
-                                    thumb.startOffsetF[2] = gConfig.view.vis_dz;
+                                    thumb.position        = bestT * gGizmoProj.radius;
 
                                     thumb.startOffset[0] = gConfig.view.vis_dx;
                                     thumb.startOffset[1] = gConfig.view.vis_dy;
                                     thumb.startOffset[2] = gConfig.view.vis_dz;
+                                    thumb.startOffsetF[0] = (float)gConfig.view.vis_dx;
+                                    thumb.startOffsetF[1] = (float)gConfig.view.vis_dy;
+                                    thumb.startOffsetF[2] = (float)gConfig.view.vis_dz;
 
                                     return;
-                                }                            
+                                }
                             }
                         }
 
                         // Normal orbit only if nothing was picked
                         if (!thumb.active && isIn3DZone(xpos, ypos, gViewport[2], gViewport[3]))
                         {
-                            setLeftClicked(true);
-                            setClickPoint(xpos, ypos);
-                        }
-                        // === Normal 3D orbit controller (only if no axis was hit) ===
-                        if (!thumb.active && isIn3DZone(xpos, ypos, gViewport[2], gViewport[3]))
-                        {
-                            setLeftClicked(true);
-                            setClickPoint(xpos, ypos);
-                        }
-                        // Activate 3D interactor
-                        if (!thumb.active && isIn3DZone(xpos, ypos, gViewport[2], gViewport[3])) {
                             setLeftClicked(true);
                             setClickPoint(xpos, ypos);
                         }
@@ -451,64 +437,34 @@ else if (tomoEnable && tomoEnable->getState())
             setClickPoint(xpos, ypos);
         }
 
-        // === CORRECTED AXIS THUMB DRAGGING WITH FRACTIONAL PRECISION ===
-        if ((pause || currentMode == REPLAY) && thumb.active && thumb.dragging)
+        // === GIZMO THUMB DRAGGING ===
+        if ((pause || currentMode == REPLAY) && thumb.active && thumb.dragging && showGizmo)
         {
-            if (!gAxisProjValid) return;
-
-            const AxisProjection& ap = gAxisProj[thumb.axis];
             float mx = static_cast<float>(xpos);
             float my = static_cast<float>(ypos);
 
-            // 1. Calculate screen space mouse delta since drag started
             float dMx = mx - (float)thumb.startMouseX;
             float dMy = my - (float)thumb.startMouseY;
 
-            // 2. Calculate axis screen direction vector
-            float dAx = ap.x1 - ap.x0;
-            float dAy = ap.y1 - ap.y0;
+            float dAx = gGizmoProj.ex[thumb.axis] - gGizmoProj.cx;
+            float dAy = gGizmoProj.ey[thumb.axis] - gGizmoProj.cy;
             float fullProjLength = std::hypot(dAx, dAy);
-
             if (fullProjLength < 1e-6f) return;
 
-            // 3. Project mouse movement onto axis direction (in screen space)
             float projDistance = (dMx * dAx + dMy * dAy) / fullProjLength;
-
-            // 4. Convert screen distance to parametric delta (0 to 1)
             float tDelta = projDistance / fullProjLength;
-
-            // 5. Calculate new parametric position
-            float newT = thumb.initialPosition + tDelta;
-
-            // 6. Clamp to [0, 1]
-            newT = glm::clamp(newT, 0.0f, 1.0f);
-
-            // 7. Calculate clamped delta
+            float newT = glm::clamp(thumb.initialPosition + tDelta, 0.0f, 1.0f);
             float finalTDelta = newT - thumb.initialPosition;
 
-            // 8. Update thumb.position for rendering (in axis length units)
-            thumb.position = newT * axisLength;
+            thumb.position = newT * gGizmoProj.radius;
 
-            // 9. Convert parametric delta to FRACTIONAL cell delta
-            // The axis represents only 0.75 of the grid (axisLength=0.375, gridExtent=0.5)
-            // So the axis only spans 0.75 * EL cells, not the full EL
-            float axisGridRatio = axisLength / 0.5f;  // = 0.375 / 0.5 = 0.75
-            float cellDelta = finalTDelta * automaton::EL * axisGridRatio;
-
-            // 10. Apply fractional cell offset directly
-            // This gives smooth, continuous movement matching the centers
+            float cellDelta = finalTDelta * (float)automaton::EL;
             float newOffset = (float)thumb.startOffset[thumb.axis] + cellDelta;
             int newVisOffset = static_cast<int>(std::round(newOffset));
 
-            if (thumb.axis == 0) {
-                gConfig.view.vis_dx = newVisOffset;
-            }
-            else if (thumb.axis == 1) {
-                gConfig.view.vis_dy = newVisOffset;
-            }
-            else if (thumb.axis == 2) {
-                gConfig.view.vis_dz = newVisOffset;
-            }
+            if (thumb.axis == 0)      gConfig.view.vis_dx = newVisOffset;
+            else if (thumb.axis == 1) gConfig.view.vis_dy = newVisOffset;
+            else if (thumb.axis == 2) gConfig.view.vis_dz = newVisOffset;
         }
     }
 
@@ -615,10 +571,20 @@ case GLFW_KEY_T:
                             pause = !pause;
                             if (!pause && currentMode == SIMULATION) {
                                 gConfig.view.vis_dx = 0;
-                                gConfig.view.vis_dx = 0;
-                                gConfig.view.vis_dx = 0;
+                                gConfig.view.vis_dy = 0;
+                                gConfig.view.vis_dz = 0;
                             }
                             glfwPostEmptyEvent();
+                        }
+                        break;
+                    case GLFW_KEY_F1:
+                        if (action == GLFW_PRESS) {
+                            showHelp = !showHelp;
+                        }
+                        break;
+                    case GLFW_KEY_G:
+                        if (action == GLFW_PRESS) {
+                            showGizmo = !showGizmo;
                         }
                         break;
                     case GLFW_KEY_F8:

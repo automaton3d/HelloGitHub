@@ -212,6 +212,7 @@ void renderHUD(int screenW, int screenH)
     renderPauseOverlay();
     renderHyperlink();
     renderScenarioHelpToggle();
+    renderGizmo();
 
     if (currentMode == SIMULATION)
     {
@@ -231,8 +232,6 @@ void renderHUD(int screenW, int screenH)
             }
         }
     }
-
-    tomography::renderControls();
 
 
     glDepthMask(GL_TRUE);

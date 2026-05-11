@@ -79,6 +79,9 @@ Mode currentMode = SPLASH;
 bool gAxisProjValid = false;
 AxisProjection gAxisProj[3];
 
+bool showGizmo = false;
+GizmoProjection gGizmoProj = {};
+
 std::mutex timerMutex;
 
 VoxelMesh voxelMesh;
