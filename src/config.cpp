@@ -30,12 +30,38 @@ static void trim(std::string& s)
     s = s.substr(start, end - start + 1);
 }
 
+static void stripComment(std::string& s)
+{
+    size_t pos = s.find('#');
+    if (pos != std::string::npos)
+    {
+        s = s.substr(0, pos);
+        trim(s);
+    }
+}
+
 bool loadConfig(const std::string& path)
 {
     std::ifstream file(path);
 
+    // Fallback: try parent directory (useful when running from build/)
+    std::string actualPath = path;
     if (!file)
+    {
+        std::string fallback = "../" + path;
+        file.open(fallback);
+        if (file)
+            actualPath = fallback;
+    }
+
+    if (!file)
+    {
+        std::cout << "[Config] File not found: " << path
+                  << " (also tried ../" << path << ")" << std::endl;
         return false;
+    }
+
+    std::cout << "[Config] Loading: " << actualPath << std::endl;
 
     // Reset to defaults before loading
     gConfig = Config{};
@@ -62,6 +88,7 @@ bool loadConfig(const std::string& path)
         std::string value = line.substr(pos + 1);
 
         trim(key);
+        stripComment(value);
         trim(value);
 
         if (key.empty() || value.empty())

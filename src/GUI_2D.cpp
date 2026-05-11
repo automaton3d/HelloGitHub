@@ -222,36 +222,55 @@ namespace framework
         if (!showHelp)
             return;
 
-        int rightX = gViewport[2] - 630;
-        int baseY  = gViewport[3] - 250;
-        int leftX  = 230;
+        const float scale = 0.4f;
+        int totalLines = (int)ui_help.size() + 1 + (int)record_help.size();
+        int lineHeight = 18;
+        int bottomMargin = 40;
+
+        // Measure longest line to right-align block before the right panel
+        float maxWidth = 0;
+        for (auto& s : ui_help)
+            maxWidth = std::max(maxWidth, hudText.measureTextWidth(s, scale));
+        for (auto& s : record_help)
+            maxWidth = std::max(maxWidth, hudText.measureTextWidth(s, scale));
+
+        // Position so text block ends just before the right panel (screenW - 260)
+        int rightX = gViewport[2] - 270 - (int)maxWidth;
 
         glm::vec3 color(0.6f);
 
-        // UI help
+        int line = 0;
+
+        // UI help (keyboard shortcuts)
         for (size_t i = 0; i < ui_help.size(); ++i) {
+            int y = bottomMargin + (totalLines - 1 - line) * lineHeight;
             hudText.RenderText(
                 ui_help[i],
                 (float)rightX,
-                (float)(baseY + 20 * i),
-                0.5f,
+                (float)y,
+                scale,
                 color,
                 gViewport[2],
                 gViewport[3]
             );
+            line++;
         }
 
-        // Record help
+        line++; // blank separator
+
+        // Record/replay help
         for (size_t i = 0; i < record_help.size(); ++i) {
+            int y = bottomMargin + (totalLines - 1 - line) * lineHeight;
             hudText.RenderText(
                 record_help[i],
-                (float)leftX,
-                (float)(baseY + 20 * i),
-                0.5f,
+                (float)rightX,
+                (float)y,
+                scale,
                 color,
                 gViewport[2],
                 gViewport[3]
             );
+            line++;
         }
     }
 

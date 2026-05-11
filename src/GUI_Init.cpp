@@ -195,8 +195,10 @@ namespace framework
         scenarioHelpToggle->setState(false);
 
 
-        scenarioHelpToggle->onToggle = [](bool state) {
-            framework::showHelp = state;
+        scenarioHelpToggle->onToggle = [](bool) {
+            // Checkbox controls scenario help pane only
+            // (checked directly via scenarioHelpToggle->getState())
+            // F1 key controls UI help text independently
         };
 
         Radio::setFontScale(0.35f);

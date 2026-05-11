@@ -304,6 +304,7 @@ void mouseButtonCallback(GLFWwindow*, int button, int action, int)
             latticeSize = splash::lattice_size;
             numLayers   = splash::numLayers;
             gConfig.simulation.scenario = splash::scenarioDropdown ? splash::scenarioDropdown->getSelectedIndex() : gConfig.simulation.scenario;
+            std::cout << "[Splash] scenario = " << gConfig.simulation.scenario << std::endl;
             initPaused  = splash::startPausedBox ? splash::startPausedBox->getState() : false;
             splash::shouldExit = true;
         }

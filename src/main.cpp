@@ -213,7 +213,8 @@ void cleanupReplay()
 // =============================================================================
 int main()
 {
-    loadConfig("automaton.cfg");
+    if (!loadConfig("automaton.cfg"))
+        std::cerr << "[Config] Using default settings\n";
 	glfwSetErrorCallback(glfwErrorCallback);
 
     // Initialize GLFW
