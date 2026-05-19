@@ -142,7 +142,7 @@ namespace framework
         };
         views[0].setSelected(true);
 
-        // >>> Ajusta a câmera para a vista isométrica inicial
+        // >>> Adjust camera to initial isometric view
         setViewFromRadio(ctx.camera, 0);
 
         // ------------------------------------------------------------
@@ -165,12 +165,12 @@ namespace framework
             Radio(80, tomoPos + 3*RAD_SEP + 10, "ZX")
         };
 
-        // Garantir que sempre tenha uma direção selecionada
+        // Ensure a direction is always selected
         if (!tomoDirs.empty()) {
             tomoDirs[0].setSelected(true);
         }
 
-        // Configuração do Tickbox de tomografia
+        // Tomography tickbox configuration
         if (tomoEnable) {
             tomoEnable->onToggle = [](bool state) {
                 if (state) {

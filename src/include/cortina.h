@@ -12,29 +12,29 @@ class TextRenderer;
 
 class Cortina {
 public:
-    // Construtor
+    // Constructor
     Cortina(float x, float y, float width, float height,
              const std::vector<std::string>& options,
              int initialSelection = 0,
              std::function<void(int)> callback = nullptr);
 
-    // Renderiza o Cortina (deve ser chamado no loop de renderização)
+    // Render the Cortina (must be called in the render loop)
     void render(TextRenderer* renderer);
 
-    // Manipulação de entrada (deve ser chamado no callback de clique do mouse)
+    // Input handling (must be called in the mouse click callback)
     bool handleMouseClick(double xpos, double ypos);
     
-    // Manipulação da roda do mouse (scroll)
+    // Mouse wheel handling (scroll)
     void handleMouseScroll(double xpos, double ypos, double yoffset);
 
-    // Obtém o índice da opção selecionada
+    // Get the selected option index
     int getSelectedIndex() const;
     void setSelectedIndex(int idx);
     
-    // Obtém o texto da opção selecionada
+    // Get the selected option text
     std::string getSelectedText() const; 
 
-    // Métodos de controle de estado
+    // State control methods
     void open() { isOpen = true; }
     void close() { isOpen = false; }
     void toggle() { isOpen = !isOpen; }
@@ -44,13 +44,13 @@ public:
     void updateHover(int mx, int my);
 
 private:
-    // Posição e dimensões (coordenadas de tela)
+    // Position and dimensions (screen coordinates)
     float x, y, width, height;
     
-    // Lista de opções
+    // Options list
     std::vector<std::string> options;
     
-    // Estado do Cortina
+    // Cortina state
     bool isOpen = false;
     int selectedIndex;
 
@@ -58,14 +58,14 @@ private:
     const int maxVisibleItems = 6;
         
 
-    // Variáveis de estado do mouse para hover (bottom-up)
+    // Mouse state variables for hover (bottom-up)
     int mouseX = 0; 
     int mouseY = 0;
     
-    // Callback a ser executado na seleção
+    // Callback to be executed on selection
     std::function<void(int)> selectionCallback;
 
-    // Constantes de aparência
+    // Appearance constants
     const glm::vec3 background_color = glm::vec3(0.1f, 0.1f, 0.1f);
     const glm::vec3 border_color     = glm::vec3(0.5f, 0.5f, 0.5f);
     const glm::vec3 hover_color      = glm::vec3(0.3f, 0.3f, 0.3f);

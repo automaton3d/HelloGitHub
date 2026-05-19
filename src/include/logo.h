@@ -26,7 +26,7 @@ namespace framework
     Logo(Logo&&)                 = default;
     Logo& operator=(Logo&&)      = default;
 
-    // Desenha em coordenadas de pixel (top-origin)
+    // Draw in pixel coordinates (top-origin)
     void draw(int x, int y, float scale = 1.0f) const;
 
     int width()  const noexcept { return mWidth_;  }

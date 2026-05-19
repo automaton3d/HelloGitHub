@@ -21,26 +21,26 @@ class TextRenderer {
 public:
     bool init(const std::string& fontPath, int fontSize, unsigned int shader);
 
-    // Versão completa (já existe)
+    // Full version
     void RenderText(const std::string& text,
                     float x, float y,
                     float scale,
                     glm::vec3 color,
                     int screenWidth, int screenHeight);
 
-    // NOVA: versão conveniente que usa tamanho atual da janela
+    // Convenience version using current window size
     void RenderText(const std::string& text,
                     float x, float y,
                     float scale,
                     glm::vec3 color);
 
-    // Opcional: versão ainda mais simples com scale = 1.0 e cor branca
+    // Optional: simplest version with scale = 1.0 and white color
     void RenderText(const std::string& text, float x, float y);
 
     float measureTextWidth(const std::string& text, float scale = 1.0f);
     ~TextRenderer() = default;
 
-    // Para a versão simples funcionar, precisamos saber o tamanho da janela
+    // For the simple version to work, we need to know the window size
     void setScreenSize(int width, int height) { screenW = width; screenH = height; }
     float getAscenderPx() const { return ascenderPx; }
     float getDescenderPx() const { return descenderPx; }
@@ -51,7 +51,7 @@ private:
     unsigned int VAO = 0, VBO = 0;
     unsigned int shaderID = 0;
 
-    // Tamanho da janela atual (usado pelas versões simplificadas)
+    // Current window size (used by simplified versions)
     int screenW = 800, screenH = 600;
     float ascenderPx = 0.0f;
     float descenderPx = 0.0f;

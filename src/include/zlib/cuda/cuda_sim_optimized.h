@@ -9,15 +9,15 @@ namespace automaton {
 }
 
 // ================================================
-// CellDevice já está definida em cuda_common.h
-// Não redefina aqui para evitar erro de redefinição
+// CellDevice is already defined in cuda_common.h
+// Do not redefine here to avoid redefinition errors
 // ================================================
 
-// Inclua o header que contém a definição real
+// Include the header that contains the actual definition
 #include "cuda_common.h"
 
 // CUDA Host API Functions
-// Estas funções são implementadas em cuda_automaton.cu
+// These functions are implemented in cuda_automaton.cu
 
 // Check if CUDA is available on this system
 bool isCudaAvailable();

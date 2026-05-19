@@ -1,15 +1,16 @@
 #include <iostream>
-
 #include "tickbox.h"
 
-// Definição das variáveis estáticas
-glm::vec3 Tickbox::borderColor_  = glm::vec3(1.0f);
-glm::vec3 Tickbox::labelColor_   = glm::vec3(0.0f);
-glm::vec3 Tickbox::fillOn_       = glm::vec3(0.0f, 1.0f, 0.0f);
-glm::vec3 Tickbox::fillOff_      = glm::vec3(0.55f);
+const int BOX_SIZE = 18;
+
+// Strong colors for dark/blue background
+// Static variable definitions - DARK THEME
+glm::vec3 Tickbox::borderColor_  = glm::vec3(0.45f, 0.45f, 0.52f);
+glm::vec3 Tickbox::labelColor_   = glm::vec3(0.95f, 0.95f, 0.98f);
+glm::vec3 Tickbox::fillOn_       = glm::vec3(0.10f, 0.45f, 0.80f);
+glm::vec3 Tickbox::fillOff_      = glm::vec3(0.09f, 0.09f, 0.14f);
 float Tickbox::fontScale_        = 0.35f;
 
-// Implementação de setColors
 void Tickbox::setColors(const glm::vec3& border,
                         const glm::vec3& labelC,
                         const glm::vec3& fillOn,
@@ -21,7 +22,6 @@ void Tickbox::setColors(const glm::vec3& border,
     fillOff_     = fillOff;
 }
 
-// Implementação de draw
 void Tickbox::draw(TextRenderer& renderer) const {
     const glm::mat4 P = ProjectionManager::instance().get2DOrtho();
 
@@ -31,11 +31,11 @@ void Tickbox::draw(TextRenderer& renderer) const {
 
     float boxY = y_;
 
-    // Caixa
+    // Box background
     drawQuad2D(x_, boxY, x_ + BOX_SIZE, boxY + BOX_SIZE,
                state_ ? fillOn_ : fillOff_, P);
 
-    // Borda
+    // Border
     std::vector<glm::vec2> border = {
         {x_, boxY},
         {x_ + BOX_SIZE, boxY},
@@ -44,7 +44,7 @@ void Tickbox::draw(TextRenderer& renderer) const {
     };
     drawLineLoop2D(border, borderColor_, P, 2.0f);
 
-    // Check mark
+    // Check mark (bold white)
     if (state_) {
         float m = 4.0f;
         std::vector<glm::vec2> check = {
@@ -52,10 +52,10 @@ void Tickbox::draw(TextRenderer& renderer) const {
             {x_ + BOX_SIZE * 0.5f, boxY + BOX_SIZE - m},
             {x_ + BOX_SIZE - m, boxY + m}
         };
-        drawLineLoop2D(check, glm::vec3(0.0f), P, 3.5f);
+        drawLineLoop2D(check, glm::vec3(0.98f, 0.98f, 1.0f), P, 4.0f);   // ← 4.0f em vez de 3.5f
     }
 
-    // Texto (converter para bottom-left)
+    // Texto
     float boxCenterY = y_ + BOX_SIZE * 0.5f;
     float textBaseline = screenH - boxCenterY - 5.0f;
 
@@ -67,13 +67,11 @@ void Tickbox::draw(TextRenderer& renderer) const {
                         screenW, screenH);
 }
 
-// Implementação de contains
 bool Tickbox::contains(int mx, int my) const {
     return mx >= x_ && mx <= x_ + BOX_SIZE &&
            my >= y_ && my <= y_ + BOX_SIZE;
 }
 
-// Implementação de onClick
 void Tickbox::onClick(int mx, int my) {
     if (contains(mx, my)) {
         state_ = !state_;
@@ -81,7 +79,6 @@ void Tickbox::onClick(int mx, int my) {
     }
 }
 
-// Implementação de setState
 void Tickbox::setState(bool s) {
     if (state_ != s) {
         state_ = s;

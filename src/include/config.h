@@ -20,20 +20,18 @@ struct Config
     } delays;
 
     // =========================
-    // VIEW (estado real da câmera)
+    // VIEW (actual camera state)
     // =========================
-    struct {
-        float rot_x = 0.0f;
-        float rot_y = 0.0f;
-
-        float cam_dist = 3.0f;
-
-        float zoom = 45.0f;
-
-        int vis_dx = 0;
-        int vis_dy = 0;
-        int vis_dz = 0;
-    } view;
+struct {
+    float rot_x = 0.0f;
+    float rot_y = 0.0f;
+    float cam_dist = 3.0f;
+    float zoom = 45.0f;
+    float ortho_scale = 0.55f;   // orthographic projection scale
+    int vis_dx = 0;
+    int vis_dy = 0;
+    int vis_dz = 0;
+} view;
 
     // =========================
     // INPUT (separado da view)
