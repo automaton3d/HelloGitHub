@@ -1,5 +1,5 @@
 /*
- * core.cpp
+ * projection.cpp
  */
 
 #include <glad/glad.h>
@@ -13,7 +13,7 @@
 #include "projection.h"
 #include "projection_manager.h"
 #include "config.h"
-#include "model/simulation.h" // 🔥 para automaton::L3
+#include "model/simulation.h" // for automaton::L3
 
 namespace framework
 {
@@ -127,7 +127,7 @@ namespace framework
         ? (float)gViewport[2] / gViewport[3]
         : 1.0f;
 
-    // GUI tem prioridade
+    // GUI has priority
     bool usePerspective;
 
     if (projectRads[0].isSelected())
@@ -145,19 +145,17 @@ namespace framework
             gConfig.projection.far_plane
         );
     }
-    else
-    {
-        float scale = gConfig.view.zoom;
-
-        mProjection_ = glm::ortho(
-            -scale * ratio,
-             scale * ratio,
-            -scale,
-             scale,
-            gConfig.projection.near_plane,
-            gConfig.projection.far_plane
-        );
-    }
-  }
+else
+{
+    float scale = gConfig.view.ortho_scale;
+    mProjection_ = glm::ortho(
+        -scale * ratio,
+         scale * ratio,
+        -scale,
+         scale,
+        gConfig.projection.near_plane,
+        gConfig.projection.far_plane
+    );
+}  }
 
 } // namespace framework

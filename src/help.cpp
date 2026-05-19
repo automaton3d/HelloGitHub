@@ -25,7 +25,7 @@ namespace framework
     "Escape: EXIT"
   };
 
-  // Texto de ajuda para gravação/replay
+  // Help text for recording/replay
   const std::vector<std::string> record_help = {
     "F5 - record",
     "F6 - replay",
@@ -33,7 +33,7 @@ namespace framework
     "F8 - load from file"
   };
 
-  // Textos de ajuda para cenários
+  // Scenario help texts
   std::vector<std::string> scenarioHelpTexts = {
     // Scenario 0
     "Scenario 0: Wrapping Test\n\n"

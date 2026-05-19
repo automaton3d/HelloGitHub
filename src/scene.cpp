@@ -20,7 +20,7 @@
 using namespace SceneConstants;
 
 // ============================================================
-// Globals (shader transparente - mantido por compatibilidade)
+// Globals (transparent shader - kept for compatibility)
 // ============================================================
 
 GLuint transparentProgram = 0;
@@ -34,10 +34,10 @@ GLint transparentAlphaLoc = -1;
 
 void initScene(AppContext& ctx)
 {
-    // Inicializa tomografia (compila shader interno)
+    // Initialize tomography (compiles internal shader)
     tomography::init();
 
-    // Shader principal
+    // Main shader
     ctx.shader = compileShader(vertexShaderSource, fragmentShaderSource);
     if (ctx.shader == 0) {
         throw std::runtime_error("Failed to compile scene shaders");
@@ -62,16 +62,15 @@ void renderScene(AppContext& ctx)
         glUseProgram(ctx.shader);
 
         // ====================================================
-        // MATRIZES
+        // MATRICES
         // ====================================================
 
         glm::mat4 model = glm::mat4(1.0f);
 
-        // IMPORTANTE: pegar projection atual (já atualizada via config + GUI)
+        // IMPORTANT: get current projection (already updated via config + GUI)
         extern glm::mat4 framework::mProjection_;
 
-        // View matrix (provavelmente já existe no teu sistema)
-        // Se você tiver uma câmera global, substitua aqui
+        // View matrix (replace with your global camera if available)
         glm::mat4 view = glm::mat4(1.0f);
 
         // ====================================================
@@ -104,7 +103,7 @@ void renderScene(AppContext& ctx)
     tomography::renderTomoPlane();
 
     // ========================================================
-    // Restore state para GUI
+    // Restore state for GUI
     // ========================================================
 
     glEnable(GL_BLEND);

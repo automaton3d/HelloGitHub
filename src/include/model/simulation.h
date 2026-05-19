@@ -94,6 +94,15 @@ namespace automaton
     Point p;
   };
 
+
+struct NeighborResult
+{
+    int x, y, z, w;
+
+    bool wrapped;
+    bool antipodal;
+};
+
   extern string lastAllocationError;
 
   // Cell Class
@@ -213,8 +222,16 @@ namespace automaton
   extern vector<Cell> lattice_curr;
 
   /// Cross constants ///
+  extern unsigned ORDER;
+  extern unsigned EL;
+  extern unsigned L2;
   extern unsigned L3;
+  extern unsigned W_DIM;
+  extern unsigned W_USED;
   extern unsigned long BLOCK;
+  extern unsigned CENTER;
+  extern unsigned FCENTER;
+  extern unsigned UPDATE;
   extern unsigned DIAG;
   extern unsigned RMAX;
   extern unsigned CONTRACT;
@@ -235,19 +252,24 @@ namespace automaton
   extern unsigned REISSUE;
   extern unsigned FLOOD;
   extern unsigned FRAME;
-
+  
   // Effective wavefront radius (triangle wave: expands 0→RMAX, contracts RMAX→0)
   // Period = 2*RMAX (= L in physics terms), amplitude = RMAX
-  inline unsigned effective_t(unsigned t) {
-      unsigned period = 2 * RMAX;
-      unsigned raw = t % period;
-      return (raw <= RMAX) ? raw : (2 * RMAX - raw);
-  }
+  inline unsigned effective_t(unsigned t)
+{
+    // Triangle oscillation: 0,1,2,...,RMAX, RMAX-1,...,1,0,1,...
+    unsigned cycle = 2 * RMAX;
+    unsigned phase = t % cycle;
+    if (phase <= RMAX)
+        return phase;
+    else
+        return cycle - phase;
+}
 
 /// Cross variables ///
 extern std::vector<Cell> lattice_curr;
-extern std::vector<Cell> lattice_draft; // Adicionar ou verificar
-extern std::vector<Cell> lattice_mirror; // Adicionar ou verificar
+extern std::vector<Cell> lattice_draft; // Add or verify
+extern std::vector<Cell> lattice_mirror; // Add or verify
 
   /**
    * Tests if two vectors are equal.

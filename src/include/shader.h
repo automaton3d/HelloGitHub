@@ -35,5 +35,5 @@ unsigned int compileTextShader();       // Text rendering
 unsigned int compileColorShader();      // 2D colored primitives
 unsigned int compileTextureShader();    // 2D textured quads
 
-// NOVO: Shader para planos semitransparentes
+// NEW: Shader for semi-transparent planes
 unsigned int compileTransparentShader();

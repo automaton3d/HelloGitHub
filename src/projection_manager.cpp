@@ -1,8 +1,8 @@
 #include "projection_manager.h"
 #include <glm/gtc/matrix_transform.hpp>
 
-// NÃO use gViewport aqui — isso já foi centralizado
-// O estado agora vem do próprio ProjectionManager
+// Do NOT use gViewport here — this has been centralized
+// State now comes from the ProjectionManager itself
 
 void ProjectionManager::setViewport(int width, int height)
 {
@@ -10,7 +10,7 @@ void ProjectionManager::setViewport(int width, int height)
     height_ = height;
     aspect_ = (height_ > 0) ? (float)width_ / height_ : 1.0f;
 
-    // Ortho 2D com origem no topo-esquerda
+    // 2D Ortho with origin at top-left
     ortho2D_ = glm::ortho(
         0.0f, (float)width_,
         (float)height_, 0.0f,

@@ -31,7 +31,7 @@ private:
     static glm::vec3 fillOn_;
     static glm::vec3 fillOff_;
 
-    // Escala de fonte compartilhada
+    // Shared font scale
     static float fontScale_;
 
 public:
@@ -43,7 +43,7 @@ public:
 
     void setPosition(int x, int y) { x_ = x; y_ = y; }
 
-    // Escala global
+    // Global scale
     static void setFontScale(float s) { fontScale_ = s; }
 
     // Cores globais

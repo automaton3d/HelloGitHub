@@ -11,15 +11,15 @@ struct AppContext {
     unsigned int cubeVAO = 0;
     unsigned int gridVAO = 0;
     unsigned int axesVAO = 0;
-    unsigned int latticeVAO = 0;   // <-- novo para o cubo wireframe
+    unsigned int latticeVAO = 0;   // <-- new for the wireframe cube
 
     // Vertex Buffer Objects
     unsigned int cubeVBO = 0;
     unsigned int gridVBO = 0;
     unsigned int axesVBO = 0;
-    unsigned int latticeVBO = 0;   // <-- novo para o cubo wireframe
+    unsigned int latticeVBO = 0;   // <-- new for the wireframe cube
     unsigned int cubeEBO = 0;
-    unsigned int latticeEBO = 0;   // <-- novo para o cubo wireframe
+    unsigned int latticeEBO = 0;   // <-- new for the wireframe cube
 
     // Camera
     OrbitCamera camera;

@@ -1,5 +1,5 @@
 /*
- * radio.h – versão ajustada (usa ProjectionManager)
+ * radio.h – adjusted version (uses ProjectionManager)
  */
 
 #ifndef RADIO_H_
@@ -23,22 +23,22 @@ private:
     std::string label_;
     int x_ = 0, y_ = 0;
 
-    // Escala de fonte compartilhada por todos os objetos
+    // Font scale shared by all objects
     static float fontScale_;
 
     static constexpr float PI = 3.14159265359f;
     static constexpr float RADIO_RADIUS = 8.0f;
 
-    // Shared colors para todos os radios
+    // Shared colors for all radios
     static glm::vec3 outlineColor_;
     static glm::vec3 fillColor_;
     static glm::vec3 labelColor_;
     static glm::vec3 centerDotColor_;
 
-    // Helper: matriz de projeção 2D atual
+    // Helper: current 2D projection matrix
     const glm::mat4& proj() const { return ProjectionManager::instance().get2DOrtho(); }
 
-    // Gera vértices de círculo
+    // Generate circle vertices
     static std::vector<glm::vec2> makeCircle(int cx, int cy, float radius);
 
 public:
@@ -46,10 +46,10 @@ public:
     Radio(int x, int y, std::string label)
         : label_(std::move(label)), x_(x), y_(y) {}
 
-    // Escala de fonte global
+    // Global font scale
     static void setFontScale(float s) { fontScale_ = s; }
 
-    // Método estático para definir cores
+    // Static method to set colors
     static void setColors(const glm::vec3& outline = glm::vec3(1.0f),
                           const glm::vec3& fill = glm::vec3(0.0f, 0.7f, 1.0f),
                           const glm::vec3& label = glm::vec3(1.0f),
@@ -57,9 +57,9 @@ public:
 
     // DRAW
     void draw(TextRenderer& renderer) const;
-    void drawAt(TextRenderer& renderer, int xPos, int yPos) const; // só declaração
+    void drawAt(TextRenderer& renderer, int xPos, int yPos) const;
 
-    // INPUT – mouse em coordenadas top-left
+    // INPUT – mouse in top-left coordinates
     bool contains(int mouseX, int mouseY) const;
 
     // STATE

@@ -43,7 +43,7 @@ namespace framework
 
     extern TextRenderer hudText;
 
-    // Referências a variáveis declaradas em GUI.cpp e globals.h
+    // References to variables declared in GUI.cpp and globals.h
     extern bool showHelp;
     extern std::vector<std::string> scenarioHelpTexts;
     extern HSlider hslider;
@@ -136,7 +136,7 @@ namespace framework
         hudText.RenderText(
             s,
             1700.0f,
-            gViewport[3] - 80.0f,
+            gViewport[3] - 95.0f,
             1.0f,
             glm::vec3(1.0f),
             gViewport[2],
@@ -288,34 +288,34 @@ namespace framework
             proj
         );
 
-        drawThickLine2D(
+        drawLine2D_new(
             x, y,
             x + w, y,
-            borderThickness,
+            borderColor,
             borderColor,
             proj
         );
 
-        drawThickLine2D(
+        drawLine2D_new(
             x + w, y,
             x + w, y + h,
-            borderThickness,
+            borderColor,
             borderColor,
             proj
         );
 
-        drawThickLine2D(
+        drawLine2D_new(
             x + w, y + h,
             x, y + h,
-            borderThickness,
+            borderColor,
             borderColor,
             proj
         );
 
-        drawThickLine2D(
+        drawLine2D_new(
             x, y + h,
             x, y,
-            borderThickness,
+            borderColor,
             borderColor,
             proj
         );

@@ -1,7 +1,7 @@
 /*
  * text_renderer.cpp
  */
-//#pragma message("ft2build.h incluído de: " __FILE__)
+//#pragma message("ft2build.h included from: " __FILE__)
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -30,7 +30,7 @@ bool TextRenderer::init(const std::string& fontPath, int fontSize, unsigned int 
 	    FT_Set_Pixel_Sizes(face, 0, fontSize);
 	    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-	    // ✅ Guardar métricas globais da fonte (uma vez só)
+	    // Store global font metrics (once)
 	    fontSizePx = fontSize;
 	    float scale = static_cast<float>(fontSize) / static_cast<float>(face->units_per_EM);
 	    ascenderPx  = face->ascender  * scale;

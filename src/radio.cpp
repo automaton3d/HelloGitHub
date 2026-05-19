@@ -1,10 +1,11 @@
 #include "radio.h"
 
-// Definições estáticas
-glm::vec3 Radio::outlineColor_   = glm::vec3(1.0f);
-glm::vec3 Radio::fillColor_      = glm::vec3(0.0f, 0.7f, 1.0f);
-glm::vec3 Radio::labelColor_     = glm::vec3(1.0f);
-glm::vec3 Radio::centerDotColor_ = glm::vec3(1.0f);
+// Static definitions - DARK THEME COLORS
+
+glm::vec3 Radio::outlineColor_   = glm::vec3(0.45f, 0.45f, 0.52f);
+glm::vec3 Radio::fillColor_      = glm::vec3(0.10f, 0.45f, 0.80f);
+glm::vec3 Radio::labelColor_     = glm::vec3(0.95f, 0.95f, 0.98f);
+glm::vec3 Radio::centerDotColor_ = glm::vec3(0.98f, 0.98f, 1.0f);
 float Radio::fontScale_          = 0.35f;
 
 std::vector<glm::vec2> Radio::makeCircle(int cx, int cy, float radius)
@@ -50,11 +51,11 @@ bool Radio::contains(int mouseX, int mouseY) const {
 void Radio::drawAt(TextRenderer& renderer, int xPos, int yPos) const {
     const glm::mat4& P = proj();
 
-    // Outer circle
+    // Outer circle (border)
     auto outline = makeCircle(xPos, yPos, RADIO_RADIUS);
     drawLineLoop2D(outline, outlineColor_, P, 2.0f);
 
-    // Inner fill if selected
+    // Inner fill when selected
     if (selected_) {
         auto inner = makeCircle(xPos, yPos, RADIO_RADIUS * 0.65f);
         std::vector<glm::vec2> fan;
@@ -65,12 +66,12 @@ void Radio::drawAt(TextRenderer& renderer, int xPos, int yPos) const {
         drawTriangleFan2D(fan, fillColor_, P);
     }
 
-    // Center dot
+    // Central dot
     drawQuad2D(xPos - 1.5f, yPos - 1.5f,
                xPos + 1.5f, yPos + 1.5f,
                centerDotColor_, P);
 
-    // Label (convert Y to bottom-left)
+    // Label
     int screenH = gViewport[3];
     float dynamicScale = fontScale_;
     float baselineY = screenH - yPos - RADIO_RADIUS * 0.3f;

@@ -1,6 +1,7 @@
 /*
- * callback.cpp - FIXED VERSION
-*/
+ * callback.cpp - UI callbacks (mouse, keyboard, scroll)
+ * Scroll: perspective → setScrollDirection, orthographic → ortho_scale
+ */
 
 #include "GUI.h"
 #include <iostream>
@@ -28,8 +29,14 @@
 
 void toggleFullscreen(GLFWwindow* window);
 
-namespace framework
-{
+namespace framework {
+
+    // Feedback cube variables (gizmo)
+    bool showDragCube = false;
+    float dragCubeX = 0.0f;
+    float dragCubeY = 0.0f;
+    int gizmoHoverAxis = -1;
+
     extern bool showExitDialog;
     extern bool showHelp;
     extern HSlider hslider;
@@ -37,38 +44,28 @@ namespace framework
     extern Tickbox *scenarioHelpToggle;
     extern bool showAboutDialog;
     extern float axisLength;
-//    extern int vis_dx;
-  //  extern int vis_dy;
-    //extern int vis_dz;
     extern ReplayProgressBar *replayProgress;
 
     void onDelayToggled(Tickbox* toggled);
     void updateProjection();
     bool isIn3DZone(double xpos, double ypos, int windowWidth, int windowHeight);
 
+    // -----------------------------------------------------------------
+    // View radio helper
+    // -----------------------------------------------------------------
     void setViewFromRadio(OrbitCamera& cam, int viewIndex) {
         switch (viewIndex) {
-            case 0: // Isometric
-                cam.yaw = 45.0f;
-                cam.pitch = 30.0f;
-                break;
-            case 1: // XY
-                cam.yaw = 0.0f;
-                cam.pitch = 90.0f;
-                break;
-            case 2: // YZ
-                cam.yaw = 90.0f;
-                cam.pitch = 0.0f;
-                break;
-            case 3: // ZX
-                cam.yaw = 0.0f;
-                cam.pitch = 0.0f;
-                break;
+            case 0: cam.yaw = 45.0f; cam.pitch = 30.0f; break;
+            case 1: cam.yaw = 0.0f;  cam.pitch = 90.0f; break;
+            case 2: cam.yaw = 90.0f; cam.pitch = 0.0f; break;
+            case 3: cam.yaw = 0.0f;  cam.pitch = 0.0f; break;
         }
     }
 
-    void sizeCallback(GLFWwindow *window, int width, int height)
-    {
+    // -----------------------------------------------------------------
+    // Window resize
+    // -----------------------------------------------------------------
+    void sizeCallback(GLFWwindow *window, int width, int height) {
         glViewport(0, 0, width, height);
         ProjectionManager::instance().setViewport(width, height);
         gViewport[0] = 0;
@@ -81,64 +78,80 @@ namespace framework
 
         if (replayProgress)
             replayProgress->setPosition(width, height, 100);
-
         if (menuBar)
             menuBar->Resize((float)width, (float)height);
 
-        updateProjection();  // Now works due to ADL + namespace scope
+        updateProjection();
     }
 
-    void buttonCallback(GLFWwindow *window, int button, int action, int mods)
-    {
+    // -----------------------------------------------------------------
+    // Mouse button callback (clicks, gizmo, UI)
+    // -----------------------------------------------------------------
+    void buttonCallback(GLFWwindow *window, int button, int action, int mods) {
         if (showExitDialog) return;
         AppContext* ctx = static_cast<AppContext*>(glfwGetWindowUserPointer(window));
-
         int width, height;
         glfwGetWindowSize(window, &width, &height);
-
         double xpos, ypos;
         glfwGetCursorPos(window, &xpos, &ypos);
 
-        switch (action)
-        {
+        switch (action) {
             case GLFW_PRESS:
-                switch (button)
-                {
-                    case GLFW_MOUSE_BUTTON_LEFT:
-                    {
-                    	if (menuBar && (ypos <= 30.0 || menuBar->IsMenuOpen())) {
-                    	                        menuBar->HandleMouse(xpos, ypos, gViewport[2], gViewport[3], true);  // Add true here
-                    	                        if (menuBar->IsMenuOpen() || ypos <= 30.0) {
-                    	                            return;
-                    	                        }
-                    	                    }
-                        #ifdef DEBUG
-                        debugClickX = xpos;
-                        debugClickY = ypos;
-                        showDebugClick = true;
-                        #endif
+                switch (button) {
+                    case GLFW_MOUSE_BUTTON_LEFT: {
+                        // Menu bar
+                        if (menuBar && (ypos <= 30.0 || menuBar->IsMenuOpen())) {
+                            menuBar->HandleMouse(xpos, ypos, gViewport[2], gViewport[3], true);
+                            if (menuBar->IsMenuOpen() || ypos <= 30.0) return;
+                        }
 
-                        // Sliders
+                        // Gizmo thumb detection (highest priority)
+                        if (showGizmo && (pause || currentMode == REPLAY)) {
+                            float mx = (float)xpos, my = (float)ypos;
+                            const float hitRadius = 15.0f;
+                            int bestAxis = -1;
+                            float bestDist = hitRadius;
+                            for (int axis = 0; axis < 3; ++axis) {
+                                float dx = mx - gGizmoProj.ex[axis];
+                                float dy = my - gGizmoProj.ey[axis];
+                                float dist = std::hypot(dx, dy);
+                                if (dist < bestDist) {
+                                    bestDist = dist;
+                                    bestAxis = axis;
+                                }
+                            }
+                            if (bestAxis != -1) {
+                                thumb.active = true;
+                                thumb.axis = bestAxis;
+                                thumb.dragging = true;
+                                thumb.startMouseX = xpos;
+                                thumb.startMouseY = ypos;
+                                thumb.initialPosition = 0.5f;
+                                thumb.position = 0.5f * gGizmoProj.radius;
+                                thumb.startOffset[0] = gConfig.view.vis_dx;
+                                thumb.startOffset[1] = gConfig.view.vis_dy;
+                                thumb.startOffset[2] = gConfig.view.vis_dz;
+                                thumb.startOffsetF[0] = (float)gConfig.view.vis_dx;
+                                thumb.startOffsetF[1] = (float)gConfig.view.vis_dy;
+                                thumb.startOffsetF[2] = (float)gConfig.view.vis_dz;
+                                return;
+                            }
+                        }
+
+                        // Other UI
                         vslider.onMouseButton(button, action, xpos, ypos);
                         hslider.onMouseButton(button, action, xpos, ypos);
-
                         if (hslider.isDragging() || vslider.isDragging()) {
-                            float sliderValue = hslider.getValue();
-                            tomography::setSlicePosition(sliderValue);
+                            tomography::setSlicePosition(hslider.getValue());
                             tomography::update();
                             return;
                         }
 
-                        int mouseX = static_cast<int>(xpos);
-                        int mouseY = static_cast<int>(ypos);
-
-                        // Data3D tickboxes
+                        int mouseX = (int)xpos, mouseY = (int)ypos;
                         for (Tickbox& cb : data3D) {
                             cb.onClick(mouseX, mouseY);
                             if (cb.contains(mouseX, mouseY)) return;
                         }
-
-                        // Delays tickboxes
                         for (Tickbox& cb : delays) {
                             if (cb.contains(mouseX, mouseY)) {
                                 cb.onClick(mouseX, mouseY);
@@ -146,232 +159,85 @@ namespace framework
                                 return;
                             }
                         }
-
-                        // Scenario help toggle
                         if (scenarioHelpToggle->contains(mouseX, mouseY)) {
                             scenarioHelpToggle->onClick(mouseX, mouseY);
                             return;
                         }
-
-                        // View radios
-                        for (size_t i = 0; i < views.size(); ++i)
-                        {
-                            if (views[i].contains(mouseX, mouseY))
-                            {
+                        for (size_t i = 0; i < views.size(); ++i) {
+                            if (views[i].contains(mouseX, mouseY)) {
                                 for (Radio& r : views) r.setSelected(false);
                                 views[i].setSelected(true);
-
-                                // >>> Atualiza a câmera conforme o radio selecionado
-                                if (ctx) {
-                                    setViewFromRadio(ctx->camera, (int)i);
-                                }
-
+                                if (ctx) setViewFromRadio(ctx->camera, (int)i);
                                 return;
                             }
                         }
-
-                        // Layer list
-                        if (layerList)
-                            layerList->poll(mouseX, mouseY);
-
-                        // Projection radios
-                        for (size_t i = 0; i < projectRads.size(); ++i)
-                        {
-                            if (projectRads[i].contains(mouseX, mouseY))
-                            {
+                        if (layerList) layerList->poll(mouseX, mouseY);
+                        for (size_t i = 0; i < projectRads.size(); ++i) {
+                            if (projectRads[i].contains(mouseX, mouseY)) {
                                 for (Radio& r : projectRads) r.setSelected(false);
                                 projectRads[i].setSelected(true);
                                 updateProjection();
                                 return;
                             }
                         }
-
-                        // Tomography controls
-// ============================================================
-// Tomography controls
-// ============================================================
-
-if (tomoEnable && tomoEnable->contains(mouseX, mouseY))
-{
-    tomoEnable->onClick(mouseX, mouseY);
-
-    // ========================================================
-    // DISABLE TOMOGRAPHY
-    // ========================================================
-
-    if (!tomoEnable->getState())
-    {
-        setPipelineState(RenderPipelineState::FULL_VOLUME);
-        return;
-    }
-
-    // ========================================================
-    // ENABLE TOMOGRAPHY
-    // ========================================================
-
-    for (Radio& r : tomoDirs)
-        r.setSelected(false);
-
-    if (!tomoDirs.empty())
-    {
-        tomoDirs[0].setSelected(true);
-
-        setPipelineState(
-            RenderPipelineState::TOMOGRAPHY_XY
-        );
-    }
-
-    return;
-}
-
-// ============================================================
-// Tomography direction radios
-// ============================================================
-
-else if (tomoEnable && tomoEnable->getState())
-{
-    for (size_t i = 0; i < tomoDirs.size(); ++i)
-    {
-        if (tomoDirs[i].contains(mouseX, mouseY))
-        {
-            for (Radio& r : tomoDirs)
-                r.setSelected(false);
-
-            tomoDirs[i].setSelected(true);
-
-            switch (i)
-            {
-                case 0:
-                    setPipelineState(
-                        RenderPipelineState::TOMOGRAPHY_XY);
-                    break;
-
-                case 1:
-                    setPipelineState(
-                        RenderPipelineState::TOMOGRAPHY_YZ);
-                    break;
-
-                case 2:
-                    setPipelineState(
-                        RenderPipelineState::TOMOGRAPHY_ZX);
-                    break;
-
-                default:
-                    break;
-            }
-
-            return;
-        }
-    }
-}
+                        // Tomography
+                        if (tomoEnable && tomoEnable->contains(mouseX, mouseY)) {
+                            tomoEnable->onClick(mouseX, mouseY);
+                            if (!tomoEnable->getState()) {
+                                setPipelineState(RenderPipelineState::FULL_VOLUME);
+                                return;
+                            }
+                            for (Radio& r : tomoDirs) r.setSelected(false);
+                            if (!tomoDirs.empty()) {
+                                tomoDirs[0].setSelected(true);
+                                setPipelineState(RenderPipelineState::TOMOGRAPHY_XY);
+                            }
+                            return;
+                        } else if (tomoEnable && tomoEnable->getState()) {
+                            for (size_t i = 0; i < tomoDirs.size(); ++i) {
+                                if (tomoDirs[i].contains(mouseX, mouseY)) {
+                                    for (Radio& r : tomoDirs) r.setSelected(false);
+                                    tomoDirs[i].setSelected(true);
+                                    switch (i) {
+                                        case 0: setPipelineState(RenderPipelineState::TOMOGRAPHY_XY); break;
+                                        case 1: setPipelineState(RenderPipelineState::TOMOGRAPHY_YZ); break;
+                                        case 2: setPipelineState(RenderPipelineState::TOMOGRAPHY_ZX); break;
+                                    }
+                                    return;
+                                }
+                            }
+                        }
                         if (gHelpLink) {
-                            int mx = (int)xpos;
-                            int my = (int)ypos;
+                            int mx = (int)xpos, my = (int)ypos;
                             int flippedY = height - my;
                             if (gHelpLink->contains(mx, flippedY, height)) {
                                 system("start https://github.com/automaton3d/automaton/blob/master/help.md");
                                 return;
                             }
                         }
-
-                        // Gizmo thumb detection (miniature axis widget)
-                        if (showGizmo && (pause || currentMode == REPLAY))
-                        {
-                            float mx = static_cast<float>(xpos);
-                            float my = static_cast<float>(ypos);
-
-                            // Check if click is near the gizmo area
-                            float toCenterDist = std::hypot(mx - gGizmoProj.cx, my - gGizmoProj.cy);
-                            if (toCenterDist < gGizmoProj.radius * 1.5f)
-                            {
-                                const float threshold = 15.0f;
-                                int   bestAxis = -1;
-                                float bestT    = 0.0f;
-                                float bestDist = threshold;
-
-                                for (int axis = 0; axis < 3; ++axis)
-                                {
-                                    float dx = gGizmoProj.ex[axis] - gGizmoProj.cx;
-                                    float dy = gGizmoProj.ey[axis] - gGizmoProj.cy;
-                                    float len2 = dx*dx + dy*dy;
-                                    if (len2 < 1e-6f) continue;
-
-                                    float t = ((mx - gGizmoProj.cx)*dx + (my - gGizmoProj.cy)*dy) / len2;
-                                    t = glm::clamp(t, 0.0f, 1.0f);
-
-                                    float px = gGizmoProj.cx + t * dx;
-                                    float py = gGizmoProj.cy + t * dy;
-                                    float dist = std::hypot(mx - px, my - py);
-
-                                    if (dist < bestDist)
-                                    {
-                                        bestDist = dist;
-                                        bestAxis = axis;
-                                        bestT    = t;
-                                    }
-                                }
-
-                                if (bestAxis != -1)
-                                {
-                                    thumb.active         = true;
-                                    thumb.axis           = bestAxis;
-                                    thumb.dragging       = true;
-                                    thumb.startMouseX    = xpos;
-                                    thumb.startMouseY    = ypos;
-                                    thumb.initialPosition = bestT;
-                                    thumb.position        = bestT * gGizmoProj.radius;
-
-                                    thumb.startOffset[0] = gConfig.view.vis_dx;
-                                    thumb.startOffset[1] = gConfig.view.vis_dy;
-                                    thumb.startOffset[2] = gConfig.view.vis_dz;
-                                    thumb.startOffsetF[0] = (float)gConfig.view.vis_dx;
-                                    thumb.startOffsetF[1] = (float)gConfig.view.vis_dy;
-                                    thumb.startOffsetF[2] = (float)gConfig.view.vis_dz;
-
-                                    return;
-                                }
-                            }
-                        }
-
-                        // Normal orbit only if nothing was picked
-                        if (!thumb.active && isIn3DZone(xpos, ypos, gViewport[2], gViewport[3]))
-                        {
+                        // Orbit
+                        if (!thumb.active && isIn3DZone(xpos, ypos, gViewport[2], gViewport[3])) {
                             setLeftClicked(true);
                             setClickPoint(xpos, ypos);
                         }
-
-                        // About dialog close button
-                        if (showAboutDialog)
-                        {
-                            int closeX = gViewport[2] / 2 - 40;
-                            int closeY = gViewport[3] - 180;
-                            int closeWidth = 100;
-                            int closeHeight = 30;
-
-                            if (xpos >= closeX && xpos <= closeX + closeWidth &&
-                                ypos >= closeY - closeHeight && ypos <= closeY + 10)
-                            {
+                        // About dialog
+                        if (showAboutDialog) {
+                            int closeX = gViewport[2]/2 - 40, closeY = gViewport[3] - 180;
+                            if (xpos >= closeX && xpos <= closeX+100 && ypos >= closeY-30 && ypos <= closeY+10)
                                 showAboutDialog = false;
-                                return;
-                            }
                         }
-
                         break;
                     }
-
                     case GLFW_MOUSE_BUTTON_MIDDLE:
                         if (isIn3DZone(xpos, ypos, gViewport[2], gViewport[3]) &&
-                            !hslider.isDragging() && !vslider.isDragging())
-                        {
+                            !hslider.isDragging() && !vslider.isDragging()) {
                             setMiddleClicked(true);
                             setClickPoint(xpos, ypos);
                         }
                         break;
-
                     case GLFW_MOUSE_BUTTON_RIGHT:
                         if (isIn3DZone(xpos, ypos, gViewport[2], gViewport[3]) &&
-                            !hslider.isDragging() && !vslider.isDragging())
-                        {
+                            !hslider.isDragging() && !vslider.isDragging()) {
                             setRightClicked(true);
                             setClickPoint(xpos, ypos);
                         }
@@ -380,19 +246,15 @@ else if (tomoEnable && tomoEnable->getState())
                 break;
 
             case GLFW_RELEASE:
-                switch (button)
-                {
-                    case GLFW_MOUSE_BUTTON_LEFT:
-                    {
-                        bool wasSliderDragging = hslider.isDragging() || vslider.isDragging();
+                switch (button) {
+                    case GLFW_MOUSE_BUTTON_LEFT: {
+                        bool wasSlider = hslider.isDragging() || vslider.isDragging();
                         hslider.onMouseButton(button, action, xpos, ypos);
                         vslider.onMouseButton(button, action, xpos, ypos);
-
-                        if (!wasSliderDragging)
-                            setLeftClicked(false);
-
-                        thumb.active   = false;
+                        if (!wasSlider) setLeftClicked(false);
+                        thumb.active = false;
                         thumb.dragging = false;
+                        showDragCube = false;
                         break;
                     }
                     case GLFW_MOUSE_BUTTON_MIDDLE:
@@ -403,219 +265,213 @@ else if (tomoEnable && tomoEnable->getState())
                         break;
                 }
                 break;
-
-            default:
-                break;
         }
     }
 
-    void moveCallback(GLFWwindow* window, double xpos, double ypos)
-    {
+    // -----------------------------------------------------------------
+    // Mouse move callback (gizmo drag, hover)
+    // -----------------------------------------------------------------
+    void moveCallback(GLFWwindow* window, double xpos, double ypos) {
         int width, height;
         glfwGetWindowSize(window, &width, &height);
 
-        // Slider and general GUI handling
         hslider.onMouseDrag((int)xpos, (int)ypos);
         hslider.onMouseMove((int)xpos, (int)ypos);
-
         if (hslider.isDragging() && tomoEnable && tomoEnable->getState()) {
-            float sliderValue = hslider.getValue();
-            tomography::setSlicePosition(sliderValue);
+            tomography::setSlicePosition(hslider.getValue());
             tomography::update();
         }
 
         if (gHelpLink) {
-            int mx = (int)xpos;
-            int my = (int)ypos;
+            int mx = (int)xpos, my = (int)ypos;
             int flippedY = height - my;
             helpHover = gHelpLink->contains(mx, flippedY, height);
         }
 
         if (!hslider.isDragging() && !vslider.isDragging() &&
-            isIn3DZone(xpos, ypos, width, height))
-        {
+            isIn3DZone(xpos, ypos, width, height)) {
             setClickPoint(xpos, ypos);
         }
 
-        // === GIZMO THUMB DRAGGING ===
-        if ((pause || currentMode == REPLAY) && thumb.active && thumb.dragging && showGizmo)
-        {
-            float mx = static_cast<float>(xpos);
-            float my = static_cast<float>(ypos);
-
+        // Gizmo dragging
+        if ((pause || currentMode == REPLAY) && thumb.active && thumb.dragging && showGizmo) {
+            float mx = (float)xpos, my = (float)ypos;
             float dMx = mx - (float)thumb.startMouseX;
             float dMy = my - (float)thumb.startMouseY;
-
             float dAx = gGizmoProj.ex[thumb.axis] - gGizmoProj.cx;
             float dAy = gGizmoProj.ey[thumb.axis] - gGizmoProj.cy;
             float fullProjLength = std::hypot(dAx, dAy);
-            if (fullProjLength < 1e-6f) return;
-
-            float projDistance = (dMx * dAx + dMy * dAy) / fullProjLength;
-            float tDelta = projDistance / fullProjLength;
-            float newT = glm::clamp(thumb.initialPosition + tDelta, 0.0f, 1.0f);
-            float finalTDelta = newT - thumb.initialPosition;
-
-            thumb.position = newT * gGizmoProj.radius;
-
-            float cellDelta = finalTDelta * (float)automaton::EL;
-            float newOffset = (float)thumb.startOffset[thumb.axis] + cellDelta;
-            int newVisOffset = static_cast<int>(std::round(newOffset));
-
-            if (thumb.axis == 0)      gConfig.view.vis_dx = newVisOffset;
-            else if (thumb.axis == 1) gConfig.view.vis_dy = newVisOffset;
-            else if (thumb.axis == 2) gConfig.view.vis_dz = newVisOffset;
+            if (fullProjLength > 1e-6f) {
+                float projDistance = (dMx * dAx + dMy * dAy) / fullProjLength;
+                float cellDelta = (projDistance / fullProjLength) * (float)automaton::EL;
+                float newOffset = (float)thumb.startOffset[thumb.axis] + cellDelta;
+                int newVisOffset = static_cast<int>(std::round(newOffset));
+                if (thumb.axis == 0)      gConfig.view.vis_dx = newVisOffset;
+                else if (thumb.axis == 1) gConfig.view.vis_dy = newVisOffset;
+                else if (thumb.axis == 2) gConfig.view.vis_dz = newVisOffset;
+            }
+            showDragCube = true;
+            dragCubeX = (float)xpos;
+            dragCubeY = (float)ypos;
+            gizmoHoverAxis = thumb.axis;
+        } else {
+            // Hover detection for gizmo
+            if (showGizmo && (pause || currentMode == REPLAY)) {
+                float mx = (float)xpos, my = (float)ypos;
+                const float hoverRadius = 14.0f;
+                int bestAxis = -1;
+                float bestDist = hoverRadius;
+                for (int axis = 0; axis < 3; ++axis) {
+                    float dx = mx - gGizmoProj.ex[axis];
+                    float dy = my - gGizmoProj.ey[axis];
+                    float dist = std::hypot(dx, dy);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestAxis = axis;
+                    }
+                }
+                gizmoHoverAxis = bestAxis;
+                if (bestAxis != -1) {
+                    showDragCube = true;
+                    dragCubeX = gGizmoProj.ex[bestAxis];
+                    dragCubeY = gGizmoProj.ey[bestAxis];
+                } else {
+                    showDragCube = false;
+                }
+            } else {
+                gizmoHoverAxis = -1;
+                showDragCube = false;
+            }
         }
+
+        // Remove resize cursor (no more <->)
+        glfwSetCursor(window, nullptr);
     }
 
-    void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
-    {
-        double mouseX, mouseY;
-        glfwGetCursorPos(window, &mouseX, &mouseY);
+    // -----------------------------------------------------------------
+    // Scroll callback (unified: perspective zoom vs ortho zoom)
+    // -----------------------------------------------------------------
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+    double mouseX, mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+    bool in3D = isIn3DZone(mouseX, mouseY, gViewport[2], gViewport[3]);
 
-        if (!hslider.isDragging() && !vslider.isDragging() &&
-            isIn3DZone(mouseX, mouseY, gViewport[2], gViewport[3]))
-        {
-            setScrollDirection((xoffset + yoffset) > 0);
+    if (!hslider.isDragging() && !vslider.isDragging() && in3D) {
+        // Determine which projection is active
+        bool usePerspective;
+        if (projectRads.size() >= 2) {
+            if (projectRads[0].isSelected())
+                usePerspective = false;  // ortho
+            else if (projectRads[1].isSelected())
+                usePerspective = true;   // perspective
+            else
+                usePerspective = gConfig.projection.perspective;
+        } else {
+            usePerspective = gConfig.projection.perspective;
+        }
+
+        if (usePerspective) {
+            // Retrieve the camera context
+            AppContext* ctx = static_cast<AppContext*>(glfwGetWindowUserPointer(window));
+            if (ctx) {
+                ctx->camera.ProcessMouseScroll((float)yoffset);
+            } else {
+                // Fallback to setScrollDirection if no context
+                setScrollDirection((xoffset + yoffset) > 0);
+            }
+        } else {
+            // Orthographic zoom
+            float delta = (yoffset > 0) ? 0.05f : -0.05f;
+            gConfig.view.ortho_scale += delta;
+            gConfig.view.ortho_scale = std::max(0.2f, std::min(6.0f, gConfig.view.ortho_scale));
+            updateProjection();
         }
     }
-
-    void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
-    {
+}
+    // -----------------------------------------------------------------
+    // Keyboard callback
+    // -----------------------------------------------------------------
+    void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
         static double lastKeyTime = 0.0;
         double now = glfwGetTime();
-        if (now - lastKeyTime < 0.2)
-            return;
+        if (now - lastKeyTime < 0.2) return;
         lastKeyTime = now;
 
-        if (action == GLFW_PRESS)
-        {
-            switch (key)
-            {
-
-            // In keyCallback() → ESC case (replace the old broken version)
-            case GLFW_KEY_ESCAPE:
-                if (action == GLFW_PRESS)
-                {
-            #ifdef _WIN32
-                    // This is now safe because we removed the bad glfwPollEvents() after MessageBox
-                    int result = MessageBoxW(
-                        nullptr,
+        if (action == GLFW_PRESS) {
+            switch (key) {
+                case GLFW_KEY_ESCAPE: {
+#ifdef _WIN32
+                    int result = MessageBoxW(nullptr,
                         L"Do you really want to exit?",
                         L"Exit Confirmation",
-                        MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SYSTEMMODAL
-                    );
-
+                        MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SYSTEMMODAL);
                     if (result == IDYES)
                         glfwSetWindowShouldClose(window, GLFW_TRUE);
-            #else
-                    // On Linux/macOS: fall back to your custom dialog or just exit
-                    framework::showExitDialog = true;
-            #endif
+#else
+                    showExitDialog = true;
+#endif
+                    break;
                 }
-                break;
-
-            case GLFW_KEY_LEFT_CONTROL:
+                case GLFW_KEY_LEFT_CONTROL:
                 case GLFW_KEY_RIGHT_CONTROL:
                     setSpeed(5.f);
                     break;
-
                 case GLFW_KEY_LEFT_SHIFT:
                 case GLFW_KEY_RIGHT_SHIFT:
                     setSpeed(0.1f);
                     break;
-
-case GLFW_KEY_T:
-
-    if (tomoEnable)
-    {
-        tomoEnable->toggle();
-
-        // ============================================
-        // DISABLE TOMOGRAPHY
-        // ============================================
-
-        if (!tomoEnable->getState())
-        {
-            setPipelineState(
-                RenderPipelineState::FULL_VOLUME);
-        }
-
-        // ============================================
-        // ENABLE TOMOGRAPHY
-        // ============================================
-
-        else
-        {
-            for (auto& r : tomoDirs)
-                r.setSelected(false);
-
-            if (!tomoDirs.empty())
-            {
-                tomoDirs[0].setSelected(true);
-
-                setPipelineState(
-                    RenderPipelineState::TOMOGRAPHY_XY);
-            }
-        }
-    }
-
-    break;
+                case GLFW_KEY_T:
+                    if (tomoEnable) {
+                        tomoEnable->toggle();
+                        if (!tomoEnable->getState())
+                            setPipelineState(RenderPipelineState::FULL_VOLUME);
+                        else {
+                            for (auto& r : tomoDirs) r.setSelected(false);
+                            if (!tomoDirs.empty()) {
+                                tomoDirs[0].setSelected(true);
+                                setPipelineState(RenderPipelineState::TOMOGRAPHY_XY);
+                            }
+                        }
+                    }
+                    break;
                 case GLFW_KEY_M:
                     sound(true);
                     break;
-
-                    // In keyCallback() for GLFW_KEY_P:
-                    case GLFW_KEY_P:
-                        if (action == GLFW_PRESS) {
-                            pause = !pause;
-                            if (!pause && currentMode == SIMULATION) {
-                                gConfig.view.vis_dx = 0;
-                                gConfig.view.vis_dy = 0;
-                                gConfig.view.vis_dz = 0;
-                            }
-                            glfwPostEmptyEvent();
-                        }
-                        break;
-                    case GLFW_KEY_F1:
-                        if (action == GLFW_PRESS) {
-                            showHelp = !showHelp;
-                        }
-                        break;
-                    case GLFW_KEY_G:
-                        if (action == GLFW_PRESS) {
-                            showGizmo = !showGizmo;
-                        }
-                        break;
-                    case GLFW_KEY_F8:
-                        if (action == GLFW_PRESS) {
-                            toggleFullscreen(window);
-                        }
-                        break;
-
+                case GLFW_KEY_P:
+                    pause = !pause;
+                    showGizmo = !showGizmo;
+                    if (!pause && currentMode == SIMULATION) {
+                        gConfig.view.vis_dx = 0;
+                        gConfig.view.vis_dy = 0;
+                        gConfig.view.vis_dz = 0;
+                    }
+                    glfwPostEmptyEvent();
+                    break;
+                case GLFW_KEY_F1:
+                    showHelp = !showHelp;
+                    break;
+                case GLFW_KEY_F8:
+                    toggleFullscreen(window);
+                    break;
                 default:
                     break;
             }
-        }
-        else if (action == GLFW_RELEASE)
-        {
-            switch (key)
-            {
+        } else if (action == GLFW_RELEASE) {
+            switch (key) {
                 case GLFW_KEY_LEFT_CONTROL:
                 case GLFW_KEY_RIGHT_CONTROL:
                 case GLFW_KEY_LEFT_SHIFT:
                 case GLFW_KEY_RIGHT_SHIFT:
                     setSpeed(1.f);
                     break;
-
                 default:
                     break;
             }
         }
     }
 
-    void errorCallback(int error, const char* description)
-    {
+    void errorCallback(int error, const char* description) {
         std::cerr << "[GLFW Error " << error << "] " << description << std::endl;
     }
-}
+
+} // namespace framework

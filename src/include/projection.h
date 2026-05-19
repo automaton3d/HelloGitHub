@@ -1,5 +1,5 @@
 /*
- * projection.h (Versão Corrigida)
+ * projection.h (Corrected Version)
  */
 
 #ifndef PROJECTION_H_

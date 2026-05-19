@@ -455,9 +455,9 @@ void renderWavefront()
 
           glm::vec3 ndc = glm::vec3(clipSpace) / clipSpace.w;
 
-          // NDC -> screen (agora SEM inverter Y!)
+          // NDC -> screen (without inverting Y)
           float screenX = (ndc.x + 1.0f) * 0.5f * gViewport[2];
-          float screenY = (1.0f - ndc.y) * 0.5f * gViewport[3];  // ← AQUI ESTÁ A CORREÇÃO!
+          float screenY = (1.0f - ndc.y) * 0.5f * gViewport[3];
 
           return glm::vec2(screenX, screenY);
       };
@@ -491,38 +491,65 @@ void renderWavefront()
       gAxisProjValid = true;
   }
 
-  void renderCube()
-  {
-    const float a = 0.25f;
-    std::vector<glm::vec3> faces;
-
-    // Right face
-    faces.push_back({ a,-a,-a}); faces.push_back({ a, a,-a});
-    faces.push_back({ a, a, a}); faces.push_back({ a,-a, a});
-    // Left face
-    faces.push_back({-a,-a,-a}); faces.push_back({-a, a,-a});
-    faces.push_back({-a, a, a}); faces.push_back({-a,-a, a});
-    // Top face
-    faces.push_back({-a, a,-a}); faces.push_back({ a, a,-a});
-    faces.push_back({ a, a, a}); faces.push_back({-a, a, a});
-    // Bottom face
-    faces.push_back({-a,-a,-a}); faces.push_back({ a,-a,-a});
-    faces.push_back({ a,-a, a}); faces.push_back({-a,-a, a});
-    // Front face
-    faces.push_back({-a,-a, a}); faces.push_back({ a,-a, a});
-    faces.push_back({ a, a, a}); faces.push_back({-a, a, a});
-    // Back face
-    faces.push_back({-a,-a,-a}); faces.push_back({ a,-a,-a});
-    faces.push_back({ a, a,-a}); faces.push_back({-a, a,-a});
+void renderCube()
+{
+    const float a = 0.25f;                    // half cube size
+    const float sphereRadius = a;             // inscribed sphere (fits inside cube)
 
     glm::mat4 view = ctx.camera.GetViewMatrix();
     glm::mat4 projection = framework::mProjection_;
     glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 mvp = projection * view * model;
 
+    // =============================================
+    // 1. Wireframe Cube (12 edges only)
+    // =============================================
+    std::vector<glm::vec3> edges;
 
-    drawQuads(faces, glm::vec3(0.45f,0.13f,0.13f), mvp);
-  }
+    // Bottom face
+    edges.push_back({-a, -a, -a}); edges.push_back({ a, -a, -a});
+    edges.push_back({ a, -a, -a}); edges.push_back({ a, -a,  a});
+    edges.push_back({ a, -a,  a}); edges.push_back({-a, -a,  a});
+    edges.push_back({-a, -a,  a}); edges.push_back({-a, -a, -a});
+    // Top face
+    edges.push_back({-a,  a, -a}); edges.push_back({ a,  a, -a});
+    edges.push_back({ a,  a, -a}); edges.push_back({ a,  a,  a});
+    edges.push_back({ a,  a,  a}); edges.push_back({-a,  a,  a});
+    edges.push_back({-a,  a,  a}); edges.push_back({-a,  a, -a});
+    // Verticals
+    edges.push_back({-a, -a, -a}); edges.push_back({-a,  a, -a});
+    edges.push_back({ a, -a, -a}); edges.push_back({ a,  a, -a});
+    edges.push_back({ a, -a,  a}); edges.push_back({ a,  a,  a});
+    edges.push_back({-a, -a,  a}); edges.push_back({-a,  a,  a});
+
+    drawLines(edges, glm::vec3(0.75f, 0.22f, 0.22f), mvp, 1.8f);
+
+    // =============================================
+    // 2. Isotropic Sphere (Fibonacci Spiral)
+    // =============================================
+    std::vector<glm::vec3> spherePoints;
+    const int numPoints = 850;                    // increased for better appearance
+    const float goldenAngle = glm::pi<float>() * (3.0f - sqrtf(5.0f)); // ~2.39996
+
+    for (int i = 0; i < numPoints; ++i)
+    {
+        float y = 1.0f - (i / float(numPoints - 1)) * 2.0f;           // from -1 to 1
+        float radius = sqrtf(1.0f - y * y);                           // circle radius at this latitude
+
+        float theta = goldenAngle * i;                                // golden angle
+
+        float x = radius * cosf(theta);
+        float z = radius * sinf(theta);
+
+        spherePoints.emplace_back(
+            sphereRadius * x,
+            sphereRadius * y,
+            sphereRadius * z
+        );
+    }
+
+    drawPoints(spherePoints, glm::vec3(0.95f, 0.45f, 0.45f), mvp, 2.4f);
+}
 
   /**
    * Horizontal reference grid.
@@ -593,8 +620,6 @@ void renderWavefront()
     glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 mvp = projection * view * model;
 
-
-
     drawPoints(pts, glm::vec3(0.70f,0.70f,0.70f), mvp, 2.0f);
   }
 
@@ -604,133 +629,147 @@ void renderWavefront()
    * handles controlling vis_dx/dy/dz (visual wrapping offset).
    * Called from renderHUD() in 2D overlay mode.
    */
-  void renderGizmo()
-  {
-      if (!showGizmo) return;
+// ---------------------------------------------------------------------
+// renderGizmo() implementation
+// ---------------------------------------------------------------------
+void renderGizmo()
+{
+    if (!showGizmo) return;
 
-      const glm::mat4& P = ProjectionManager::instance().get2DOrtho();
+    const glm::mat4& P = ProjectionManager::instance().get2DOrtho();
 
-      // Gizmo position and size (top-right, left of right panel)
-      // Ortho uses top-left origin: y=0 at top, same as GLFW
-      const float gizmoRadius = 55.0f;
-      const float cx = (float)gViewport[2] - 285.0f;
-      const float cy = 85.0f;  // near top
+    const float gizmoRadius = 70.0f;
+    const float cx = (float)gViewport[2] - 285.0f - 60.0f;
+    const float cy = 85.0f + 70.0f;
 
-      // Camera rotation (extract 3x3 from view matrix, no translation)
-      glm::mat3 rot(ctx.camera.GetViewMatrix());
+    glm::mat3 rot(ctx.camera.GetViewMatrix());
 
-      // Axis directions in view space
-      // rot * worldAxis: x maps to screen-right, y maps to screen-up
-      // But screen y increases DOWNWARD (top-left origin), so negate y
-      glm::vec3 rawDirs[3] = {
-          rot * glm::vec3(1, 0, 0),
-          rot * glm::vec3(0, 1, 0),
-          rot * glm::vec3(0, 0, 1),
-      };
+    glm::vec3 rawDirs[3] = {
+        rot * glm::vec3(1, 0, 0),
+        rot * glm::vec3(0, 1, 0),
+        rot * glm::vec3(0, 0, 1)
+    };
 
-      glm::vec3 colors[3] = {
-          {1.0f, 0.3f, 0.3f},  // X red
-          {0.3f, 1.0f, 0.3f},  // Y green
-          {0.4f, 0.4f, 1.0f},  // Z blue
-      };
-      const char* labels[3] = {"X", "Y", "Z"};
+    glm::vec3 colors[3] = {
+        {1.0f, 0.25f, 0.25f},  // X
+        {0.25f, 1.0f, 0.25f},  // Y
+        {0.25f, 0.5f, 1.0f}    // Z
+    };
 
-      // Store gizmo projections for click detection (in screen/GLFW coords)
-      gGizmoProj.cx = cx;
-      gGizmoProj.cy = cy;
-      gGizmoProj.radius = gizmoRadius;
+    const char* labels[3] = {"X", "Y", "Z"};
 
-      // Draw background circle
-      {
-          const int seg = 32;
-          std::vector<glm::vec2> circle;
-          circle.reserve(seg + 2);
-          circle.push_back({cx, cy});
-          for (int i = 0; i <= seg; ++i)
-          {
-              float a = 2.0f * 3.14159265f * (float)i / (float)seg;
-              circle.push_back({
-                  cx + cosf(a) * (gizmoRadius + 5.0f),
-                  cy + sinf(a) * (gizmoRadius + 5.0f)
-              });
-          }
-          drawTriangleFan2D(circle, glm::vec3(0.05f, 0.05f, 0.12f), P);
-      }
+    gGizmoProj.cx = cx;
+    gGizmoProj.cy = cy;
+    gGizmoProj.radius = gizmoRadius + 10.0f;
 
-      // Draw axes and handles
-      for (int axis = 0; axis < 3; ++axis)
-      {
-          // Screen-space endpoint (negate y for top-left origin)
-          float endX = cx + rawDirs[axis].x * gizmoRadius;
-          float endY = cy - rawDirs[axis].y * gizmoRadius;
+    const float r = 8.5f;   // handle bubble radius
 
-          // Store for click detection (already in GLFW coords)
-          gGizmoProj.ex[axis] = endX;
-          gGizmoProj.ey[axis] = endY;
+    // Helper to draw outlined circle (contour only)
+    auto drawCircleOutline = [&](float centerX, float centerY, float radius, const glm::vec3& color)
+    {
+        const int segments = 40;
+        for (int i = 0; i < segments; ++i)
+        {
+            float a1 = 2.0f * 3.14159265f * i / segments;
+            float a2 = 2.0f * 3.14159265f * (i + 1) / segments;
+            float x1 = centerX + cosf(a1) * radius;
+            float y1 = centerY + sinf(a1) * radius;
+            float x2 = centerX + cosf(a2) * radius;
+            float y2 = centerY + sinf(a2) * radius;
+            drawLine2D_new(x1, y1, x2, y2, color, color, P);
+        }
+    };
 
-          // Draw axis line
-          drawThickLine2D(cx, cy, endX, endY, 2.0f, colors[axis], P);
+    // 1. Axes and handle bubbles (outline only)
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        glm::vec3 dir = glm::normalize(rawDirs[axis]);
+        glm::vec3 col = colors[axis];
+        glm::vec3 faded = col * 0.6f;   // faded tone for negative axis
 
-          // Draw axis label at endpoint
-          // RenderText uses y-up (0=bottom), while drawing uses y-down (0=top)
-          float lx = endX + rawDirs[axis].x * 10.0f;
-          float ly_screen = endY - rawDirs[axis].y * 10.0f;
-          float ly_text = (float)gViewport[3] - ly_screen;
-          hudText.RenderText(labels[axis], lx, ly_text, 0.35f,
-              colors[axis], gViewport[2], gViewport[3]);
+        // Positive
+        float centerX_pos = cx + dir.x * (gizmoRadius - r);
+        float centerY_pos = cy - dir.y * (gizmoRadius - r);
+        float tipX_pos = cx + dir.x * (gizmoRadius - 2.0f * r);
+        float tipY_pos = cy - dir.y * (gizmoRadius - 2.0f * r);
+        drawLine2D_new(cx, cy, tipX_pos, tipY_pos, col, col, P);
+        drawCircleOutline(centerX_pos, centerY_pos, r, col);
 
-          // Handle position based on current vis offset
-          int visOffset = 0;
-          if (axis == 0) visOffset = gConfig.view.vis_dx;
-          else if (axis == 1) visOffset = gConfig.view.vis_dy;
-          else visOffset = gConfig.view.vis_dz;
+        // NEGATIVE (same length)
+        float centerX_neg = cx - dir.x * (gizmoRadius - r);
+        float centerY_neg = cy + dir.y * (gizmoRadius - r);
+        float tipX_neg = cx - dir.x * (gizmoRadius - 2.0f * r);
+        float tipY_neg = cy + dir.y * (gizmoRadius - 2.0f * r);
+        drawLine2D_new(cx, cy, tipX_neg, tipY_neg, faded, faded, P);
+        drawCircleOutline(centerX_neg, centerY_neg, r, faded);
 
-          // Map offset to parametric t [-1, 1] on the gizmo axis
-          float t = 0.0f;
-          if (EL > 0)
-              t = glm::clamp((float)visOffset / ((float)EL * 0.5f), -1.0f, 1.0f);
+        // ============================================================
+        // IMPORTANT: store positive bubble coords for hit test
+        // ============================================================
+        gGizmoProj.ex[axis] = centerX_pos;
+        gGizmoProj.ey[axis] = centerY_pos;
 
-          float handleX = cx + rawDirs[axis].x * gizmoRadius * t;
-          float handleY = cy - rawDirs[axis].y * gizmoRadius * t;
+        // Label (centered, offset 2px down)
+        float lx = centerX_pos;
+        float ly_screen = centerY_pos;
+        float ly_text = (float)gViewport[3] - ly_screen;
+        hudText.RenderText(labels[axis], lx - 5.0f, ly_text - 5.0f,
+                           0.50f, col, gViewport[2], gViewport[3]);
+    }
 
-          // Handle: small filled circle
-          const int hseg = 12;
-          const float handleR = 5.0f;
-          std::vector<glm::vec2> handle;
-          handle.reserve(hseg + 2);
-          handle.push_back({handleX, handleY});
-          for (int i = 0; i <= hseg; ++i)
-          {
-              float a = 2.0f * 3.14159265f * (float)i / (float)hseg;
-              handle.push_back({
-                  handleX + cosf(a) * handleR,
-                  handleY + sinf(a) * handleR
-              });
-          }
-          drawTriangleFan2D(handle, colors[axis], P);
-      }
+    // 2. Central point (solid, with border)
+    {
+        const float originR = 4.0f;
+        std::vector<glm::vec2> originDot;
+        originDot.reserve(20);
+        originDot.push_back({cx, cy});
+        for (int i = 0; i < 18; ++i)
+        {
+            float a = 2.0f * 3.14159265f * i / 18.0f;
+            originDot.push_back({ cx + cosf(a) * originR, cy + sinf(a) * originR });
+        }
+        drawTriangleFan2D(originDot, glm::vec3(0.8f), P); // fill
+        for (int i = 0; i < 18; ++i)
+        {
+            int j = (i + 1) % 18;
+            glm::vec2 p1 = originDot[i+1], p2 = originDot[j+1];
+            drawLine2D_new(p1.x, p1.y, p2.x, p2.y, glm::vec3(0.5f), glm::vec3(0.5f), P);
+        }
+    }
 
-      // Draw origin dot
-      {
-          const int oseg = 8;
-          std::vector<glm::vec2> originDot;
-          originDot.reserve(oseg + 2);
-          originDot.push_back({cx, cy});
-          for (int i = 0; i <= oseg; ++i)
-          {
-              float a = 2.0f * 3.14159265f * (float)i / (float)oseg;
-              originDot.push_back({
-                  cx + cosf(a) * 3.0f,
-                  cy + sinf(a) * 3.0f
-              });
-          }
-          drawTriangleFan2D(originDot, glm::vec3(0.8f), P);
-      }
-  }
+    // ==================================================================
+    // 3. DRAW FEEDBACK CUBE (hover or drag)
+    // ==================================================================
+    if (framework::showDragCube && showGizmo)
+    {
+        float cubeX = framework::dragCubeX;
+        float cubeY = framework::dragCubeY;
+        const float size = 18.0f;   // size in pixels
+
+        std::vector<glm::vec2> cubeVerts = {
+            {cubeX - size/2, cubeY - size/2},
+            {cubeX + size/2, cubeY - size/2},
+            {cubeX + size/2, cubeY + size/2},
+            {cubeX - size/2, cubeY + size/2}
+        };
+
+        // Orange fill
+        drawTriangleFan2D(cubeVerts, glm::vec3(1.0f, 0.5f, 0.2f), P);
+        // Black border
+        for (int i = 0; i < 4; ++i)
+        {
+            int j = (i + 1) % 4;
+            drawLine2D_new(cubeVerts[i].x, cubeVerts[i].y,
+                           cubeVerts[j].x, cubeVerts[j].y,
+                           glm::vec3(0.0f, 0.0f, 0.0f),
+                           glm::vec3(0.0f, 0.0f, 0.0f), P);
+        }
+    }
+}
 
   /**
    * Renders 3D objects
-   * A transformação MVP deve ser gerenciada pelo GUIrenderer antes de chamar esta função
+   * The MVP transform must be managed by GUIrenderer before calling this function
    */
   void render3DObjects()
   {
@@ -788,9 +827,9 @@ void renderWavefront()
     }
     if (data3D.size() > 6 && data3D[6].getState())
     {
-      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+//      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
       renderCube();
-      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  //    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
     if (data3D[7].getState()) renderAxes();
     if (data3D[8].getState()) renderGrid();

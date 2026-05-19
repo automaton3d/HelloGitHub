@@ -21,7 +21,7 @@ class TextRenderer;
 struct AxisProjection;
 
 // ============================================================================
-// Declarações externas (extern) — DEFINIDAS em globals.cpp
+// External declarations (extern) — DEFINED in globals.cpp
 // ============================================================================
 
 class Button;
@@ -40,12 +40,7 @@ extern std::vector<Radio> tomoDirs;
 extern GLFWwindow* window;
 
 extern GLuint textProgram;
-extern GLuint colorProgram2D;
 extern GLuint textureProgram2D;
-extern GLuint colorProgram3D;
-
-extern GLint colorMvpLoc2D;
-extern GLint colorColorLoc2D;
 extern GLint textureMvpLoc;
 extern GLint textureSamplerLoc;
 
@@ -57,13 +52,13 @@ extern TextRenderer* textRenderer;
 
 extern int gViewport[4];
 
-// Estado da aplicação
+// Application state
 extern unsigned long long timer;
 extern int latticeSize;
 extern int numLayers;
 extern bool initPaused;
 
-// Flags de controle
+// Control flags
 extern std::atomic<bool> gSimulationThreadRunning;
 extern std::thread gSimThread;
 
@@ -74,17 +69,17 @@ enum Mode {
     REPLAY
 };
 
-// Variável global que guarda o modo atual
+// Global variable holding the current mode
 extern Mode currentMode;
 
-// Para a thread de simulação
+// For the simulation thread
 extern std::atomic<bool> pause;
 extern std::atomic<bool> active;
 
 // Buffers
 extern std::vector<unsigned int> voxels;
 
-// Projeção e vista
+// Projection and view
 extern glm::mat4 modelview;
 extern glm::mat4 projection;
 
@@ -129,6 +124,8 @@ extern int windowedPosY;
 
 
 namespace framework {
+    extern int gizmoHoverAxis;   // -1 = none, 0=X, 1=Y, 2=Z
+    
     struct AxisThumb {
         bool active = false;
         bool dragging = false;
@@ -149,6 +146,9 @@ namespace framework {
     extern float vis_offset_z;
     extern MenuBar* menuBar;
 
+    extern bool showDragCube;
+    extern float dragCubeX;
+    extern float dragCubeY;
 }
 
 extern bool helpHover;
@@ -176,7 +176,7 @@ extern double debugClickY;
 extern bool showDebugClick;
 extern bool GPUEnabled;
 
-extern GLuint transparentProgram;   // programa para o plano transparente
+extern GLuint transparentProgram;   // program for the transparent plane
 extern GLint transparentMvpLoc, transparentColorLoc, transparentAlphaLoc;
 
 namespace automaton
