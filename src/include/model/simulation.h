@@ -261,7 +261,7 @@ struct NeighborResult
   // Pulsating sphere threshold (triangle wave on r²)
   inline unsigned int pulse_from_time(unsigned int t)
   {
-      const unsigned int min_r2 = 25;
+      const unsigned int min_r2 = 0;
       const unsigned int max_r2 = (unsigned int)(RMAX * RMAX * 0.92);
       const unsigned int step = 1;
       unsigned int span = max_r2 - min_r2;
