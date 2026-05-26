@@ -1153,7 +1153,7 @@ namespace automaton
         dst.sB = src.sB ? 1 : 0;
         dst.a = src.a;
         for (int i = 0; i < 4; ++i) dst.x[i] = src.x[i];
-        dst.d = src.d;
+        dst.r2 = src.r2;
         dst.phiB = src.phiB ? 1 : 0;
         dst.t = src.t;
         dst.f = src.f;
@@ -1175,7 +1175,7 @@ namespace automaton
         dst.sB = src.sB != 0;
         dst.a = src.a;
         for (int i = 0; i < 4; ++i) dst.x[i] = src.x[i];
-        dst.d = src.d;
+        dst.r2 = src.r2;
         dst.phiB = src.phiB != 0;
         dst.t = src.t;
         dst.f = src.f;
