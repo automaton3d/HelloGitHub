@@ -381,6 +381,9 @@ void updateBufferCPU()
 
         voxels[idx++] = color;
     }
+
+    // Advance pulsation once per rendered frame
+    automaton::pulse_tick++;
 }
 
 // ============================================================

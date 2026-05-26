@@ -164,7 +164,8 @@ namespace automaton
   {
     // Pulsating sphere: BFS wavefront propagation replaces the old FSM
     update_pulsating_wavefront();
-    pulse_tick++;
+    // pulse_tick is incremented in updateBufferCPU() (render side)
+    // to keep pulsation animation synchronized with frame rate
   }
 
   void update_lattice()
