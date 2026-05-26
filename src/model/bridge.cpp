@@ -357,7 +357,7 @@ void updateBufferCPU()
         unsigned int pulse_r2 =
             automaton::pulse_from_time(automaton::pulse_tick);
 
-        if (cell.r2 != automaton::INF_R2 &&
+        if (cell.r2 != INF_R2 &&
             cell.r2 == pulse_r2)
         {
             // Shell at current pulsation threshold
