@@ -216,7 +216,7 @@ static void downloadAndSync()
         for (unsigned z = 0; z < automaton::EL; ++z) {
             const automaton::Cell& cell =
                 automaton::getCell(automaton::lattice_curr, x, y, z, w);
-            if (cell.d == 0)
+            if (cell.r2 == 0)
                 updateLCenter(w, x, y, z);
         }
     } else {
