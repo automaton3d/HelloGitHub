@@ -82,24 +82,21 @@ void initGeneral()
                     cell.x[2] = z;
                     cell.x[3] = w;
                     
-                    // Calculate distance from layer center
+                    // Calculate squared distance from layer center
                     int dx = (int)x - (int)cx;
                     int dy = (int)y - (int)cy;
                     int dz = (int)z - (int)cz;
-                    int r2 = dx*dx + dy*dy + dz*dz;
-                    int R2 = RMAX * RMAX;
+                    unsigned int dist_r2 = dx*dx + dy*dy + dz*dz;
+                    unsigned int R2 = RMAX * RMAX;
                     
-                    if (r2 <= R2) {
-                        cell.d = (unsigned)sqrt((double)r2);
+                    if (dist_r2 <= R2) {
                         cell.a = w;
                     } else {
-                        cell.d = RMAX;
                         cell.a = W_USED;  // Orphan outside sphere
                     }
                     
-                    // Initialize pulsating sphere r2
+                    // Initialize r2 for BFS propagation (replaces old d)
                     // Center cell gets r2=0, all others start at INF_R2
-                    // (BFS will propagate the correct values)
                     if (x == CENTER && y == CENTER && z == CENTER)
                         cell.r2 = 0;
                     else

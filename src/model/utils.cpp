@@ -322,7 +322,7 @@ namespace automaton
             dst.phiB = src.phiB;
             dst.t    = src.t;
             dst.f    = src.f;
-            dst.d    = src.d;
+            dst.r2   = src.r2;
             dst.s2B  = src.s2B;
             dst.kB   = src.kB;
             dst.bB   = src.bB;

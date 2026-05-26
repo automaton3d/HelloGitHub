@@ -279,15 +279,21 @@ struct NeighborResult
   // Effective wavefront radius (triangle wave: expands 0→RMAX, contracts RMAX→0)
   // Period = 2*RMAX (= L in physics terms), amplitude = RMAX
   inline unsigned effective_t(unsigned t)
-{
-    // Triangle oscillation: 0,1,2,...,RMAX, RMAX-1,...,1,0,1,...
-    unsigned cycle = 2 * RMAX;
-    unsigned phase = t % cycle;
-    if (phase <= RMAX)
-        return phase;
-    else
-        return cycle - phase;
-}
+  {
+      unsigned cycle = 2 * RMAX;
+      unsigned phase = t % cycle;
+      if (phase <= RMAX)
+          return phase;
+      else
+          return cycle - phase;
+  }
+
+  // Effective wavefront radius squared (integer only, no floats)
+  inline unsigned int effective_r2(unsigned t)
+  {
+      unsigned r = effective_t(t);
+      return r * r;
+  }
 
 /// Cross variables ///
 extern std::vector<Cell> lattice_curr;

@@ -157,14 +157,81 @@ namespace automaton
   }
 
   // ============================================================
-  // CPU UPDATE (original FSM — preserved but bypassed)
+  // CPU UPDATE — BFS + interaction FSM
   // ============================================================
 
   void update_lattice_cpu()
   {
-    // Pulsating sphere: BFS wavefront propagation replaces the old FSM
+    // Phase 1: BFS propagation of r2 (replaces ad-hoc d initialization)
     update_pulsating_wavefront();
     pulse_tick++;
+
+    // Phase 2: FSM interaction loop (uses r2 instead of d)
+    for (unsigned w = 0; w < W_USED; ++w)
+    {
+        if (w == 0)
+        {
+            const Cell& first = lattice_curr.front();
+            if (gConfig.delays.convol && first.k < CONVOL)
+                std::this_thread::sleep_for(std::chrono::milliseconds(120));
+            else if (diffuse_delay && first.k >= CONVOL && first.k < DIFFUSION)
+                std::this_thread::sleep_for(std::chrono::milliseconds(80));
+            else if (reloc_delay && first.k >= DIFFUSION && first.k < RELOC)
+                std::this_thread::sleep_for(std::chrono::milliseconds(120));
+        }
+
+        for (unsigned x = 0; x < EL; ++x)
+        for (unsigned y = 0; y < EL; ++y)
+        for (unsigned z = 0; z < EL; ++z)
+        {
+            Cell &curr   = getCell(lattice_curr, x, y, z, w);
+            Cell &draft  = getCell(lattice_draft, x, y, z, w);
+            Cell &mirror = getCell(lattice_mirror, x, y, z, w);
+
+            draft = curr;
+
+            // Ensure correct coordinates
+            curr.x[0] = x;
+            curr.x[1] = y;
+            curr.x[2] = z;
+            curr.x[3] = w;
+
+            Cell &forward = curr.getNeighbor(FORWARD);
+            Cell &north   = curr.getNeighbor(NORTH);
+            Cell &west    = curr.getNeighbor(WEST);
+            Cell &down    = curr.getNeighbor(DOWN);
+            Cell &south   = curr.getNeighbor(SOUTH);
+            Cell &east    = curr.getNeighbor(EAST);
+            Cell &up      = curr.getNeighbor(UP);
+
+            if (curr.k < CONVOL) {
+                convolute(curr, draft, mirror);
+            } else if (curr.k < GSLOT_Z) {
+                // glider slots
+            } else if (curr.k < DIFFUSION) {
+                diffuse(curr, draft, forward, north, west, down, south, east, up);
+            } else if (curr.k < RELOC) {
+                relocate(curr, draft, north, west, down);
+            } else if (curr.k < REISSUE) {
+                reissue(curr, draft, forward, north, west, down, south, east, up);
+            } else if (curr.k < FLOOD) {
+                flood(curr, draft, forward, north, west, down, south, east, up);
+            }
+
+            if (curr.r2 == 0) {
+                trackCenter(x, y, z, w);
+            }
+
+            draft.k = (curr.k + 1) % FRAME;
+
+            if (draft.k == 0) {
+                if (curr.a == W_USED && curr.t <= RMAX)
+                    draft.t++;
+                else
+                    draft.t = (curr.t + 1) % (2 * RMAX);
+            }
+        }
+    }
   }
 
   void update_lattice()
@@ -227,7 +294,7 @@ namespace automaton
   bool simulation()
   {
     update_lattice();
-    return true;  // Always signal a new frame for visualization
+    return swap_lattices();
   }
 
   // ============================================================
