@@ -109,7 +109,7 @@ static void convertCellToCellDevice(const automaton::Cell& src,
     for (int i = 0; i < 4; ++i)
         dst.x[i] = static_cast<uint32_t>(src.x[i]);
 
-    dst.d    = static_cast<uint32_t>(src.d);
+    dst.r2   = static_cast<uint32_t>(src.r2);
     dst.phiB = src.phiB ? 1 : 0;
     dst.t    = static_cast<uint32_t>(src.t);
     dst.f    = static_cast<uint32_t>(src.f);
@@ -141,7 +141,7 @@ static void convertCellDeviceToCell(const CellDevice& src,
     for (int i = 0; i < 4; ++i)
         dst.x[i] = static_cast<unsigned>(src.x[i]);
 
-    dst.d    = static_cast<unsigned>(src.d);
+    dst.r2   = static_cast<unsigned>(src.r2);
     dst.phiB = (src.phiB != 0);
     dst.t    = static_cast<unsigned>(src.t);
     dst.f    = static_cast<unsigned>(src.f);
