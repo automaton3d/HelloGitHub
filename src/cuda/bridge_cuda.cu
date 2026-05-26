@@ -278,6 +278,9 @@ void cudaSimulationStepWrapper()
         }
     }
 
+    // Advance pulsation tick (mirrors CPU's pulse_tick++ in update_lattice_cpu)
+    automaton::pulse_tick++;
+
     // Final download (always needed)
     downloadAndSync();
 
