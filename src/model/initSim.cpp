@@ -95,12 +95,8 @@ void initGeneral()
                         cell.a = W_USED;  // Orphan outside sphere
                     }
                     
-                    // Initialize r2 for BFS propagation (replaces old d)
-                    // Center cell gets r2=0, all others start at INF_R2
-                    if (x == CENTER && y == CENTER && z == CENTER)
-                        cell.r2 = 0;
-                    else
-                        cell.r2 = INF_R2;
+                    // Initialize r2 (squared distance from center, integer only)
+                    cell.r2 = dist_r2;
 
                     // Initialize flags
                     cell.pB = false;
