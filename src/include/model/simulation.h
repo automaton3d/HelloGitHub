@@ -263,7 +263,7 @@ struct NeighborResult
   {
       const unsigned int min_r2 = 25;
       const unsigned int max_r2 = (unsigned int)(RMAX * RMAX * 0.92);
-      const unsigned int step = 7;
+      const unsigned int step = 1;
       unsigned int span = max_r2 - min_r2;
       if (span == 0) return min_r2;
       unsigned int period = 2 * span;
