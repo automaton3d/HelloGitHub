@@ -50,6 +50,9 @@ void initGeneral()
     const double R = EL / 2.0;
     
     printf("initGeneral: EL=%u, RMAX=%u\n", EL, RMAX);
+
+    // Reset pulsating sphere tick counter
+    pulse_tick = 0;
     
     for (unsigned w = 0; w < W_USED; ++w)
     {
@@ -94,6 +97,14 @@ void initGeneral()
                         cell.a = W_USED;  // Orphan outside sphere
                     }
                     
+                    // Initialize pulsating sphere r2
+                    // Center cell gets r2=0, all others start at INF_R2
+                    // (BFS will propagate the correct values)
+                    if (x == CENTER && y == CENTER && z == CENTER)
+                        cell.r2 = 0;
+                    else
+                        cell.r2 = INF_R2;
+
                     // Initialize flags
                     cell.pB = false;
                     cell.sB = false;

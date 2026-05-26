@@ -353,27 +353,20 @@ void updateBufferCPU()
 
         uint32_t color = 0x00000000u;
 
-        unsigned eff_t =
-            automaton::effective_t(cell.t);
+        // Pulsating sphere visualization
+        unsigned int pulse_r2 =
+            automaton::pulse_from_time(automaton::pulse_tick);
 
-        if (cell.gB)
+        if (cell.r2 != automaton::INF_R2 &&
+            cell.r2 == pulse_r2)
         {
-            color = makeColor(255, 255, 80, 255);
+            // Shell at current pulsation threshold
+            color = makeColor(255, 255, 80, 255);  // Yellow
         }
-        else if (cell.d == eff_t)
+        else if (cell.r2 == 0)
         {
-            if (cell.a == automaton::W_USED)
-            {
-                color = makeColor(255, 80, 80, 255);
-            }
-            else if (eff_t == 0)
-            {
-                color = makeColor(80, 255, 80, 255);
-            }
-            else
-            {
-                color = makeColor(200, 200, 255, 255);
-            }
+            // Center cell
+            color = makeColor(80, 255, 80, 255);   // Green
         }
 
         voxels[idx++] = color;
