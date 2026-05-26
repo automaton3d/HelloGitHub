@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <cstring>
+#include <cmath>
 #include <iostream>
 
 #if defined(USE_CUDA) && !defined(CUDA_BRIDGE_CU)
@@ -357,7 +358,16 @@ void updateBufferCPU()
         unsigned int pulse_r2 =
             automaton::pulse_from_time(automaton::pulse_tick);
 
-        if (cell.r2 != INF_R2 &&
+        // Current radius marker on X axis (red dot)
+        unsigned int pulse_r = (unsigned int)sqrt((double)pulse_r2);
+        unsigned int markerX = automaton::CENTER + pulse_r;
+        if (x == markerX &&
+            y == automaton::CENTER &&
+            z == automaton::CENTER)
+        {
+            color = makeColor(255, 80, 80, 255);   // Red
+        }
+        else if (cell.r2 != INF_R2 &&
             cell.r2 == pulse_r2)
         {
             // Shell at current pulsation threshold
