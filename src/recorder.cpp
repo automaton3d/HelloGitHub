@@ -98,7 +98,7 @@ void FrameRecorder::recordFrame(const std::vector<automaton::Cell>& lattice,
         unsigned z = (cz + dz + automaton::EL) % automaton::EL;
 
         const automaton::Cell& c = getCell(lattice, x, y, z, w);
-        if (c.r2 != automaton::effective_r2(c.t)) continue;
+        if (c.r2 != automaton::pulse_from_time(c.t)) continue;
 
         bool is_orphan = (c.a == automaton::W_USED);
         wavefrontSet.insert({c.t, is_orphan});

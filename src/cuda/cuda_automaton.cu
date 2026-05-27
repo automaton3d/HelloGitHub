@@ -188,10 +188,19 @@ static __device__ inline unsigned dev_effective_t(unsigned t) {
     return (raw <= dev_RMAX) ? raw : (2 * dev_RMAX - raw);
 }
 
-// Device helper: effective wavefront radius squared (integer only, no floats)
-static __device__ inline unsigned dev_effective_r2(unsigned t) {
-    unsigned r = dev_effective_t(t);
-    return r * r;
+// Device helper: pulsating sphere threshold (triangle wave on r², no multiplication)
+static __device__ inline unsigned dev_pulse_from_time(unsigned t) {
+    const unsigned min_r2 = 0;
+    const unsigned max_r2 = (unsigned)(dev_RMAX * dev_RMAX * 0.92);
+    const unsigned step = 1;
+    unsigned span = max_r2 - min_r2;
+    if (span == 0) return min_r2;
+    unsigned period = 2 * span;
+    unsigned phase = (t * step) % period;
+    if (phase < span)
+        return min_r2 + phase;
+    else
+        return max_r2 - (phase - span);
 }
 
 // ===================================================================
@@ -207,7 +216,7 @@ __device__ inline void dev_convolute0(::CellDevice& /*curr*/, ::CellDevice& /*dr
 __device__ inline void dev_convolute1(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& /*mirror*/, unsigned w, unsigned tid)
 {
-    if (curr.r2 == dev_effective_r2(curr.t) && dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && w == 0)
+    if (curr.r2 == dev_pulse_from_time(curr.t) && dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && w == 0)
     {
         int old = atomicExch(&dev_ctrl, 0);
         if (old == 1)
@@ -222,7 +231,7 @@ __device__ inline void dev_convolute1(::CellDevice& curr, ::CellDevice& draft,
 __device__ inline void dev_convolute2(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& /*mirror*/, unsigned w, unsigned /*tid*/)
 {
-    if (curr.r2 == dev_effective_r2(curr.t) && dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && w == 0)
+    if (curr.r2 == dev_pulse_from_time(curr.t) && dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && w == 0)
     {
         int old = atomicExch(&dev_ctrl, 0);
         if (old == 1) draft.a = dev_W_USED;
@@ -232,7 +241,7 @@ __device__ inline void dev_convolute2(::CellDevice& curr, ::CellDevice& draft,
 __device__ inline void dev_convolute3(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& /*mirror*/, unsigned w, unsigned /*tid*/)
 {
-    if (curr.r2 == dev_effective_r2(curr.t) && dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && w == 0)
+    if (curr.r2 == dev_pulse_from_time(curr.t) && dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && w == 0)
     {
         int old = atomicExch(&dev_ctrl, 0);
         if (old == 1)
@@ -246,7 +255,7 @@ __device__ inline void dev_convolute3(::CellDevice& curr, ::CellDevice& draft,
 __device__ inline void dev_convolute4(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& /*mirror*/, unsigned w, unsigned /*tid*/)
 {
-    if (curr.r2 == dev_effective_r2(curr.t) && dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && curr.sB && w == 0)
+    if (curr.r2 == dev_pulse_from_time(curr.t) && dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && curr.sB && w == 0)
     {
         int old = atomicExch(&dev_ctrl, 0);
         if (old == 1) draft.hB = 1;
@@ -256,7 +265,7 @@ __device__ inline void dev_convolute4(::CellDevice& curr, ::CellDevice& draft,
 __device__ inline void dev_convolute5(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& /*mirror*/, unsigned w, unsigned /*tid*/)
 {
-    if (curr.r2 == dev_effective_r2(curr.t) && dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && curr.pB && w == 0 &&
+    if (curr.r2 == dev_pulse_from_time(curr.t) && dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) && curr.pB && w == 0 &&
         !curr.cB && curr.a != dev_W_USED)
     {
         int old = atomicExch(&dev_ctrl, 0);
@@ -275,7 +284,7 @@ __device__ inline void dev_convolute6(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& mirror, unsigned /*w*/, unsigned /*tid*/)
 {
     // Cells awaken?
-    if (curr.r2 == dev_effective_r2(curr.t) && mirror.r2 == dev_effective_r2(mirror.t))
+    if (curr.r2 == dev_pulse_from_time(curr.t) && mirror.r2 == dev_pulse_from_time(mirror.t))
     {
         // Test superposition
         if (curr.x[0] == mirror.x[0] &&
@@ -286,7 +295,7 @@ __device__ inline void dev_convolute6(::CellDevice& curr, ::CellDevice& draft,
             if (curr.a != dev_W_USED &&
                 DEV_W1(curr) != DEV_W1(mirror) &&
                 !curr.cB &&
-                dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2))
+                dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2))
             {
                 if (curr.pB && mirror.sB)
                 {
@@ -311,7 +320,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                                       ::CellDevice& mirror, unsigned /*w*/, unsigned /*tid*/)
 {
     // Cells awaken?
-    if (curr.r2 == dev_effective_r2(curr.t) && mirror.r2 == dev_effective_r2(mirror.t))
+    if (curr.r2 == dev_pulse_from_time(curr.t) && mirror.r2 == dev_pulse_from_time(mirror.t))
     {
         // --- A) SAME POSITION (superposition) ---
         if (curr.x[0] == mirror.x[0] &&
@@ -320,7 +329,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
         {
             // Test dispersion
             if (DEV_W1(curr) != DEV_W1(mirror) &&
-                dev_effective_r2(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) &&
+                dev_pulse_from_time(curr.t) == (dev_RMAX / 2) * (dev_RMAX / 2) &&
                 !curr.cB && curr.a != dev_W_USED)
             {
                 // Who has the pB true interacts once
@@ -339,7 +348,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                 }
             }
             // Test single pair
-            else if (curr.f * curr.f == dev_effective_r2(curr.t) && mirror.f * mirror.f == dev_effective_r2(mirror.t))
+            else if (curr.f == curr.t && mirror.f == mirror.t)
             {
                 // Different sectors?
                 if (DEV_W1(curr) != DEV_W1(mirror))
@@ -411,7 +420,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                 }
             }
             // Blob formation
-            else if (curr.f * curr.f != dev_effective_r2(curr.t) && mirror.f * mirror.f != dev_effective_r2(mirror.t) && curr.bB)
+            else if (curr.f != curr.t && mirror.f != mirror.t && curr.bB)
             {
                 draft.f += curr.f + mirror.f;
                 draft.s2B &= curr.phiB;
@@ -429,7 +438,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                     DEV_Q(curr) != DEV_Q(mirror) &&
                     DEV_W0(curr) != DEV_W0(mirror) &&
                     DEV_COLOR(curr) == DEV_ANTICOLOR(mirror) &&
-                    curr.f * curr.f == dev_effective_r2(curr.t) && mirror.f * mirror.f == dev_effective_r2(mirror.t))
+                    curr.f == curr.t && mirror.f == mirror.t)
                 {
                     draft.c[0] = curr.x[0];
                     draft.c[1] = curr.x[1];
@@ -439,7 +448,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                 }
                 // Fermion cohesion?
                 else if (curr.ch == mirror.ch &&
-                         curr.f * curr.f == dev_effective_r2(curr.t) && mirror.f * mirror.f == dev_effective_r2(mirror.t))
+                         curr.f == curr.t && mirror.f == mirror.t)
                 {
                     if (curr.c[3] > mirror.c[3])
                     {
@@ -475,7 +484,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                 else if (dev_neutralColor(curr, mirror))
                 {
                     // Gluon x gluon
-                    if (curr.f * curr.f > dev_effective_r2(curr.t) && mirror.f * mirror.f > dev_effective_r2(mirror.t))
+                    if (curr.f > curr.t && mirror.f > mirror.t)
                     {
                         draft.c[0] = curr.x[0];
                         draft.c[1] = curr.x[1];
@@ -483,7 +492,7 @@ __device__ inline void dev_convolute7(::CellDevice& curr, ::CellDevice& draft,
                         draft.ch = (curr.ch & ~COLOR_MASK) | (mirror.ch & COLOR_MASK);
                     }
                     // Quark x gluon
-                    else if (curr.f * curr.f == dev_effective_r2(curr.t) && mirror.f * mirror.f > dev_effective_r2(mirror.t))
+                    else if (curr.f == curr.t && mirror.f > mirror.t)
                     {
                         draft.c[0] = curr.x[0];
                         draft.c[1] = curr.x[1];
@@ -683,8 +692,8 @@ __global__ void ca_update_kernel(::CellDevice* d_curr, ::CellDevice* d_draft, ::
                 (up.a    == dev_W_USED && curr.r2 >= up.r2)) {
                 draft.a = dev_W_USED;
             }
-            // Hunting using hB (matches CPU: effective_r2 condition, no modulo on c[])
-            if (curr.r2 == dev_effective_r2(curr.t)) {
+            // Hunting using hB (matches CPU: pulse_from_time condition, no modulo on c[])
+            if (curr.r2 == dev_pulse_from_time(curr.t)) {
                 if (north.hB) { draft.c[0] = north.c[0] + 1; curr.sB = !draft.hB; }
                 else if (west.hB)  { draft.c[1] = west.c[1] + 1; curr.sB = !draft.hB; }
                 else if (down.hB)  { draft.c[2] = down.c[2] + 1; curr.sB = !draft.hB; }
@@ -818,7 +827,7 @@ __global__ void ca_update_kernel(::CellDevice* d_curr, ::CellDevice* d_draft, ::
         draft.kB = 0;
         draft.hB = 0;
         draft.bB = 0;
-        if (curr.r2 == dev_effective_r2(curr.t)) {
+        if (curr.r2 == dev_pulse_from_time(curr.t)) {
             if (north.r2 > curr.r2) draft.a = north.a;
             if (south.r2 > curr.r2) draft.a = south.a;
             if (east.r2  > curr.r2) draft.a = east.a;

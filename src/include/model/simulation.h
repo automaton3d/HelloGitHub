@@ -288,12 +288,6 @@ struct NeighborResult
           return cycle - phase;
   }
 
-  // Effective wavefront radius squared (integer only, no floats)
-  inline unsigned int effective_r2(unsigned t)
-  {
-      unsigned r = effective_t(t);
-      return r * r;
-  }
 
 /// Cross variables ///
 extern std::vector<Cell> lattice_curr;

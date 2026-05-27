@@ -87,7 +87,7 @@ namespace automaton
         draft.a = W_USED;
       }
       /*--- Hunting using hB ---*/
-      if (curr.r2 == effective_r2(curr.t))
+      if (curr.r2 == pulse_from_time(curr.t))
       {
         if (north.hB) { draft.c[0] = (north.c[0] + 1) % EL; curr.sB = !draft.hB; }
         else if (west.hB)  { draft.c[1] = (west.c[1] + 1) % EL; curr.sB = !draft.hB; }
@@ -253,7 +253,7 @@ namespace automaton
       draft.hB = false;
       draft.bB = false;
       // Propagate normal affinity outward, overwriting normal or orphan
-      if (curr.r2 == effective_r2(curr.t))
+      if (curr.r2 == pulse_from_time(curr.t))
       {
           if (north.r2 > curr.r2)
           {
