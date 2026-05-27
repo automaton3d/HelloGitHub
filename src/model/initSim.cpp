@@ -50,6 +50,9 @@ void initGeneral()
     const double R = EL / 2.0;
     
     printf("initGeneral: EL=%u, RMAX=%u\n", EL, RMAX);
+
+    // Reset pulsating sphere tick counter
+    pulse_tick = 0;
     
     for (unsigned w = 0; w < W_USED; ++w)
     {
@@ -79,21 +82,22 @@ void initGeneral()
                     cell.x[2] = z;
                     cell.x[3] = w;
                     
-                    // Calculate distance from layer center
+                    // Calculate squared distance from layer center
                     int dx = (int)x - (int)cx;
                     int dy = (int)y - (int)cy;
                     int dz = (int)z - (int)cz;
-                    int r2 = dx*dx + dy*dy + dz*dz;
-                    int R2 = RMAX * RMAX;
+                    unsigned int dist_r2 = dx*dx + dy*dy + dz*dz;
+                    unsigned int R2 = RMAX * RMAX;
                     
-                    if (r2 <= R2) {
-                        cell.d = (unsigned)sqrt((double)r2);
+                    if (dist_r2 <= R2) {
                         cell.a = w;
                     } else {
-                        cell.d = RMAX;
                         cell.a = W_USED;  // Orphan outside sphere
                     }
                     
+                    // Initialize r2 (squared distance from center, integer only)
+                    cell.r2 = dist_r2;
+
                     // Initialize flags
                     cell.pB = false;
                     cell.sB = false;
@@ -448,29 +452,14 @@ void initCenters(unsigned wDim)
 {
     lcenters.resize(wDim);
     
-    // Distribute centers in a spherical pattern around the global center
-    int R_center = EL / 4;  // Center distribution radius
-    
+    // All bubbles centered at lattice center in all layers
     for (unsigned w = 0; w < wDim; ++w)
     {
-        // Angles to distribute centers uniformly
-        double theta = 2.0 * PI * w / wDim;
-        double phi = acos(1.0 - 2.0 * w / wDim);
+        lcenters[w][0] = CENTER;
+        lcenters[w][1] = CENTER;
+        lcenters[w][2] = CENTER;
         
-        int cx = CENTER + (int)round(R_center * sin(phi) * cos(theta));
-        int cy = CENTER + (int)round(R_center * sin(phi) * sin(theta));
-        int cz = CENTER + (int)round(R_center * cos(phi));
-        
-        // Clamp to valid range
-        cx = std::max(0, std::min((int)EL - 1, cx));
-        cy = std::max(0, std::min((int)EL - 1, cy));
-        cz = std::max(0, std::min((int)EL - 1, cz));
-        
-        lcenters[w][0] = cx;
-        lcenters[w][1] = cy;
-        lcenters[w][2] = cz;
-        
-        printf("initCenters: w=%u, center=(%u,%u,%u)\n", w, cx, cy, cz);
+        printf("initCenters: w=%u, center=(%u,%u,%u)\n", w, CENTER, CENTER, CENTER);
     }
 }
 

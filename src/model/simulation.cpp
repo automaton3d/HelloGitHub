@@ -8,6 +8,7 @@
 #include <chrono>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include "model/simulation.h"
 #include "config.h"
 
@@ -44,6 +45,7 @@ namespace automaton
   unsigned ORDER;
   unsigned CENTER;
   unsigned FCENTER;
+  unsigned int pulse_tick = 0;
 
   // Lattices
   std::vector<Cell> lattice_curr;
@@ -84,11 +86,87 @@ namespace automaton
   }
 
   // ============================================================
-  // CPU UPDATE
+  // PULSATING SPHERE — BFS WAVEFRONT PROPAGATION
+  // ============================================================
+
+  void update_pulsating_wavefront()
+  {
+    // Copy current r2 values into draft
+    for (size_t i = 0; i < BLOCK; ++i)
+        lattice_draft[i].r2 = lattice_curr[i].r2;
+
+    for (unsigned w = 0; w < W_USED; ++w)
+    for (unsigned x = 0; x < EL; ++x)
+    for (unsigned y = 0; y < EL; ++y)
+    for (unsigned z = 0; z < EL; ++z)
+    {
+        Cell &curr = getCell(lattice_curr, x, y, z, w);
+
+        if (curr.r2 == INF_R2)
+            continue;
+
+        int MID = (int)CENTER;
+
+        unsigned ax = (x > (unsigned)MID) ? (x - MID) : (MID - x);
+        unsigned ay = (y > (unsigned)MID) ? (y - MID) : (MID - y);
+        unsigned az = (z > (unsigned)MID) ? (z - MID) : (MID - z);
+
+        // 6-connected spatial neighbors (no w propagation)
+        static const int offsets[6][3] = {
+            {+1,0,0}, {-1,0,0},
+            {0,+1,0}, {0,-1,0},
+            {0,0,+1}, {0,0,-1}
+        };
+
+        for (int dir = 0; dir < 6; ++dir)
+        {
+            int nx = (int)x + offsets[dir][0];
+            int ny = (int)y + offsets[dir][1];
+            int nz = (int)z + offsets[dir][2];
+
+            if (nx < 0 || nx >= (int)EL ||
+                ny < 0 || ny >= (int)EL ||
+                nz < 0 || nz >= (int)EL)
+                continue;
+
+            // Incremental r2 difference
+            unsigned diff;
+            if (dir < 2)
+                diff = 2 * ax + 1;
+            else if (dir < 4)
+                diff = 2 * ay + 1;
+            else
+                diff = 2 * az + 1;
+
+            unsigned int new_r2 = curr.r2 + diff;
+
+            Cell &nxt = getCell(lattice_draft, nx, ny, nz, w);
+
+            if (new_r2 < nxt.r2)
+                nxt.r2 = new_r2;
+        }
+    }
+
+    // Ensure center stays at 0
+    for (unsigned w = 0; w < W_USED; ++w)
+        getCell(lattice_draft, CENTER, CENTER, CENTER, w).r2 = 0;
+
+    // Copy r2 back to curr
+    for (size_t i = 0; i < BLOCK; ++i)
+        lattice_curr[i].r2 = lattice_draft[i].r2;
+  }
+
+  // ============================================================
+  // CPU UPDATE — BFS + interaction FSM
   // ============================================================
 
   void update_lattice_cpu()
   {
+    // Phase 1: BFS propagation of r2 (replaces ad-hoc d initialization)
+    update_pulsating_wavefront();
+    pulse_tick++;
+
+    // Phase 2: FSM interaction loop (uses r2 instead of d)
     for (unsigned w = 0; w < W_USED; ++w)
     {
         if (w == 0)
@@ -112,7 +190,7 @@ namespace automaton
 
             draft = curr;
 
-            // 🔥 GARANTIR COORDENADAS CORRETAS
+            // Ensure correct coordinates
             curr.x[0] = x;
             curr.x[1] = y;
             curr.x[2] = z;
@@ -140,7 +218,7 @@ namespace automaton
                 flood(curr, draft, forward, north, west, down, south, east, up);
             }
 
-            if (curr.d == 0) {
+            if (curr.r2 == 0) {
                 trackCenter(x, y, z, w);
             }
 
@@ -220,7 +298,7 @@ namespace automaton
   }
 
   // ============================================================
-  // 🔥 FIX REAL AQUI
+  // Neighbor accessor
   // ============================================================
 
   Cell &Cell::getNeighbor(int i)

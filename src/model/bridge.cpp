@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <cstring>
+#include <cmath>
 #include <iostream>
 
 #if defined(USE_CUDA) && !defined(CUDA_BRIDGE_CU)
@@ -133,7 +134,7 @@ static void convertCellToCellDevice(
     for (int i = 0; i < 4; ++i)
         dst.x[i] = static_cast<uint32_t>(src.x[i]);
 
-    dst.d    = static_cast<uint32_t>(src.d);
+    dst.r2   = static_cast<uint32_t>(src.r2);
     dst.phiB = src.phiB ? 1 : 0;
     dst.t    = static_cast<uint32_t>(src.t);
     dst.f    = static_cast<uint32_t>(src.f);
@@ -162,7 +163,7 @@ static void convertCellDeviceToCell(
     for (int i = 0; i < 4; ++i)
         dst.x[i] = static_cast<unsigned>(src.x[i]);
 
-    dst.d    = static_cast<unsigned>(src.d);
+    dst.r2   = static_cast<unsigned>(src.r2);
     dst.phiB = (src.phiB != 0);
     dst.t    = static_cast<unsigned>(src.t);
     dst.f    = static_cast<unsigned>(src.f);
@@ -353,31 +354,34 @@ void updateBufferCPU()
 
         uint32_t color = 0x00000000u;
 
-        unsigned eff_t =
-            automaton::effective_t(cell.t);
+        // Pulsating sphere visualization
+        unsigned int pulse_r2 =
+            automaton::pulse_from_time(automaton::pulse_tick);
 
-        if (cell.gB)
+        // Current radius marker on X axis (red dot)
+        unsigned int pulse_r = (unsigned int)sqrt((double)pulse_r2);
+        unsigned int markerX = automaton::CENTER + pulse_r;
+        if (x == markerX &&
+            y == automaton::CENTER &&
+            z == automaton::CENTER)
         {
-            color = makeColor(255, 255, 80, 255);
+            color = makeColor(255, 80, 80, 255);   // Red
         }
-        else if (cell.d == eff_t)
+        else if (cell.r2 != INF_R2 &&
+            cell.r2 == pulse_r2)
         {
-            if (cell.a == automaton::W_USED)
-            {
-                color = makeColor(255, 80, 80, 255);
-            }
-            else if (eff_t == 0)
-            {
-                color = makeColor(80, 255, 80, 255);
-            }
-            else
-            {
-                color = makeColor(200, 200, 255, 255);
-            }
+            // Shell at current pulsation threshold
+            color = makeColor(255, 255, 80, 255);  // Yellow
+        }
+        else if (cell.r2 == 0)
+        {
+            // Center cell
+            color = makeColor(80, 255, 80, 255);   // Green
         }
 
         voxels[idx++] = color;
     }
+
 }
 
 // ============================================================

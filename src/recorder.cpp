@@ -80,7 +80,7 @@ void FrameRecorder::recordFrame(const std::vector<automaton::Cell>& lattice,
     unsigned cz = centerCell.x[2];
 
     // Skip if center is not valid
-    if (centerCell.d != 0) continue;
+    if (centerCell.r2 != 0) continue;
 
     // Collect unique wavefronts in this layer
     std::set<std::pair<uint16_t, bool>> wavefrontSet;
@@ -98,7 +98,7 @@ void FrameRecorder::recordFrame(const std::vector<automaton::Cell>& lattice,
         unsigned z = (cz + dz + automaton::EL) % automaton::EL;
 
         const automaton::Cell& c = getCell(lattice, x, y, z, w);
-        if (c.t != c.d) continue;
+        if (c.r2 != automaton::pulse_from_time(c.t)) continue;
 
         bool is_orphan = (c.a == automaton::W_USED);
         wavefrontSet.insert({c.t, is_orphan});
@@ -179,7 +179,7 @@ void FrameRecorder::applyFrame(const Frame& frame,
   // Reset all cells to invalid state
   for (auto& cell : lattice) {
     cell.t = UINT16_MAX;
-    cell.d = UINT16_MAX;
+    cell.r2 = INF_R2;
     cell.a = automaton::W_USED;
   }
 
@@ -191,7 +191,7 @@ void FrameRecorder::applyFrame(const Frame& frame,
     uint8_t w = layer.w;
 
     automaton::Cell& centerCell = getCell(lattice, cx, cy, cz, w);
-    centerCell.d = 0;
+    centerCell.r2 = 0;
 
     for (const auto& wf : layer.wavefronts) {
       // Update center cell with minimum wavefront
@@ -214,7 +214,7 @@ void FrameRecorder::applyFrame(const Frame& frame,
             if (std::fabs(dist - wf.t) < 0.5f) {
               automaton::Cell& c = getCell(lattice, x, y, z, w);
               c.t = wf.t;
-              c.d = wf.t;
+              c.r2 = wf.t * wf.t;
               c.a = (wf.orphan ? automaton::W_USED : w);
             }
           }

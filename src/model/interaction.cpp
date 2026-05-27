@@ -63,12 +63,12 @@ namespace automaton
 	  if (curr.k < SLOT1)
 	  {
 	    /*--- Orphan propagation ---*/
-	    if ((north.a == W_USED && curr.d >= north.d) ||
-	        (west.a  == W_USED && curr.d >= west.d)  ||
-	        (down.a  == W_USED && curr.d >= down.d)  ||
-	        (south.a == W_USED && curr.d >= south.d) ||
-	        (east.a  == W_USED && curr.d >= east.d)  ||
-	        (up.a    == W_USED && curr.d >= up.d))
+	    if ((north.a == W_USED && curr.r2 >= north.r2) ||
+	        (west.a  == W_USED && curr.r2 >= west.r2)  ||
+	        (down.a  == W_USED && curr.r2 >= down.r2)  ||
+	        (south.a == W_USED && curr.r2 >= south.r2) ||
+	        (east.a  == W_USED && curr.r2 >= east.r2)  ||
+	        (up.a    == W_USED && curr.r2 >= up.r2))
 	    {
 	      draft.a = W_USED;
 	    }
@@ -77,17 +77,17 @@ namespace automaton
     if (curr.k < SLOT2)
     {
       /*--- Orphan propagation ---*/
-      if ((north.a == W_USED && curr.d >= north.d) ||
-          (west.a  == W_USED && curr.d >= west.d)  ||
-          (down.a  == W_USED && curr.d >= down.d)  ||
-          (south.a == W_USED && curr.d >= south.d) ||
-          (east.a  == W_USED && curr.d >= east.d)  ||
-          (up.a    == W_USED && curr.d >= up.d))
+      if ((north.a == W_USED && curr.r2 >= north.r2) ||
+          (west.a  == W_USED && curr.r2 >= west.r2)  ||
+          (down.a  == W_USED && curr.r2 >= down.r2)  ||
+          (south.a == W_USED && curr.r2 >= south.r2) ||
+          (east.a  == W_USED && curr.r2 >= east.r2)  ||
+          (up.a    == W_USED && curr.r2 >= up.r2))
       {
         draft.a = W_USED;
       }
       /*--- Hunting using hB ---*/
-      if (curr.d == effective_t(curr.t))
+      if (curr.r2 == pulse_from_time(curr.t))
       {
         if (north.hB) { draft.c[0] = (north.c[0] + 1) % EL; curr.sB = !draft.hB; }
         else if (west.hB)  { draft.c[1] = (west.c[1] + 1) % EL; curr.sB = !draft.hB; }
@@ -123,40 +123,40 @@ namespace automaton
       }
       draft.f = max(down.f, max(west.f, max(north.f,
                   max(south.f, max(east.f, up.f)))));
-      // Diffuse CB toward center (d=0)
+      // Diffuse CB toward center (r2=0)
       if (!curr.cB)
       {
-        if (north.cB && north.d > curr.d)
+        if (north.cB && north.r2 > curr.r2)
         {
           draft.cB = true;
           if (north.a != W_USED)
             draft.a = north.a;
         }
-        else if (south.cB && south.d > curr.d)
+        else if (south.cB && south.r2 > curr.r2)
         {
           draft.cB = true;
           if (south.a != W_USED)
             draft.a = south.a;
         }
-        else if (east.cB && east.d > curr.d)
+        else if (east.cB && east.r2 > curr.r2)
         {
           draft.cB = true;
           if (east.a != W_USED)
             draft.a = east.a;
         }
-        else if (west.cB && west.d > curr.d)
+        else if (west.cB && west.r2 > curr.r2)
         {
           draft.cB = true;
           if (west.a != W_USED)
             draft.a = west.a;
         }
-        else if (down.cB && down.d > curr.d)
+        else if (down.cB && down.r2 > curr.r2)
         {
           draft.cB = true;
           if (down.a != W_USED)
             draft.a = down.a;
         }
-        else if (up.cB && up.d > curr.d)
+        else if (up.cB && up.r2 > curr.r2)
         {
           draft.cB = true;
           if (up.a != W_USED)
@@ -186,7 +186,7 @@ namespace automaton
     {
       if (curr.a == W_USED)
       {
-        if (curr.d < curr.t)
+        if (curr.r2 < curr.t * curr.t)
         {
       	  draft.a = curr.x[3];
         }
@@ -253,30 +253,30 @@ namespace automaton
       draft.hB = false;
       draft.bB = false;
       // Propagate normal affinity outward, overwriting normal or orphan
-      if (curr.d == effective_t(curr.t))
+      if (curr.r2 == pulse_from_time(curr.t))
       {
-          if (north.d == curr.d + 1)
+          if (north.r2 > curr.r2)
           {
               // Copy a from inner to outer cell
               draft.a = north.a;
           }
-          if (south.d == curr.d + 1)
+          if (south.r2 > curr.r2)
           {
               draft.a = south.a;
           }
-          if (east.d == curr.d + 1)
+          if (east.r2 > curr.r2)
           {
               draft.a = east.a;
           }
-          if (west.d == curr.d + 1)
+          if (west.r2 > curr.r2)
           {
               draft.a = west.a;
           }
-          if (up.d == curr.d + 1)
+          if (up.r2 > curr.r2)
           {
               draft.a = up.a;
           }
-          if (down.d == curr.d + 1)
+          if (down.r2 > curr.r2)
           {
               draft.a = down.a;
           }
@@ -285,7 +285,7 @@ namespace automaton
       {
         // Consume cB
         draft.cB = false;
-        if (curr.a != W_USED && curr.d < 2)
+        if (curr.a != W_USED && curr.r2 < 4)
         {
           draft.t = 0;
         }
