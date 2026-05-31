@@ -107,31 +107,31 @@ void step() {
 
         v_new -= (v_new >> 5);
 
+        /* shell forcing — 4x stronger injection than seno5.c
+         * to sustain the standing wave without the radial boost */
         int dr = r - SHELL_R;
         if (dr < 0) dr = -dr;
         if(dr <= SHELL_W) {
             if (u > SHELL_TARGET) {
                 int excess = u - SHELL_TARGET;
-                v_new -= (excess >> 6);
+                v_new -= (excess >> 5);
             }
             else if ((tick & 3) == 0) {
                 int deficit = SHELL_TARGET - u;
-                v_new += (deficit >> 12) + 1;
+                v_new += (deficit >> 10) + 1;
             }
         }
 
-        /* CORE_R * 2 via shift */
-        if(r < (CORE_R << 1)) {
-            v_new -= (v_new >> 3);
-            u_new -= (u_new >> 4);
-        }
+        /* NO core damping — let spherical convergence from the
+         * shell build the natural sin(kr)/r peak at r=0.
+         * seno5.c had:  v_new -= (v_new >> 3); u_new -= (u_new >> 4);
+         * That killed the center peak.  Removing it lets inward
+         * waves accumulate, forming the sinc envelope naturally. */
 
-        /* RADIAL BOOST REMOVED
-         * seno5.c had:  if (r > 15) u_new += u_new >> (10 - (r >> 3));
-         * That compensated the natural 1/r decay, producing flat sin²(r).
-         * Without it, the 3-D wave equation's natural sin(kr)/r solution
-         * is preserved — the spherical sinusoidal distribution.
-         */
+        /* NO radial boost — seno5.c compensated the 1/r decay
+         * with u_new += u_new >> (10 - (r >> 3)), flattening
+         * the profile to sin²(r).  Without it the natural 3-D
+         * wave solution sin(kr)/r is preserved.               */
 
         /* boundary absorption — shift-only replacement for:
          *   u_new = (u_new * (5 - dist)) >> 3               */
