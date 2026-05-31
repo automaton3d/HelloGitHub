@@ -34,6 +34,7 @@
 #define SHELL_W     (L / 10)             /* 10 */
 #define CORE_R      3
 #define SHELL_TARGET 16384
+#define HALF_BOOST_BASE 11              /* original was 10; +1 = half strength */
 
 /* ── visualisation ────────────────────────────────────────────────── */
 #define GRAPH_SCALE_X 16
@@ -85,7 +86,7 @@ void init(void)
         grid[x][y][z].u  = 0;
         grid[x][y][z].v  = 0;
     }
-    grid[cx][cy][cz].u = 8192;
+    grid[cx][cy][cz].u = 2048;
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -142,21 +143,27 @@ void step(void)
             }
         }
 
-        /* ── core: very light damping only (prevent blowup) ──── */
-        /* No reinforcement — let natural spherical convergence
-         * from the shell build a smooth dome at r=0.           */
+        /* ── core damping (same as sin² version) ────────────── */
         if (r < (CORE_R << 1))
         {
-            v_new -= (v_new >> 6);
+            v_new -= (v_new >> 3);
+            u_new -= (u_new >> 4);
         }
 
-        /* ── NO radial boost ─────────────────────────────────────
-         * The sin² version added:
-         *     u_new += (u_new >> (10 - (r >> 3)));
-         * We omit that entirely so the natural 1/r decay of the 3-D
-         * wave equation shows through, giving sin²(r)/r instead of
-         * flat sin²(r).
+        /* ── half-strength radial boost ───────────────────────────
+         * Original sin² used:  u_new += u_new >> (10 - (r >> 3))
+         * which fully compensates the 1/r decay → flat sin²(r).
+         *
+         * We use base 11 instead of 10 (one extra shift = half
+         * the boost), so roughly half the 1/r decay remains,
+         * yielding an envelope closer to sin²(r)/r.
          * ─────────────────────────────────────────────────────────── */
+        if (r > 15)
+        {
+            int boost_shift = HALF_BOOST_BASE - (r >> 3);
+            if (boost_shift < 2) boost_shift = 2;
+            u_new += (u_new >> boost_shift);
+        }
 
         /* ── boundary absorption (shift-only, no multiply) ─────── */
         if (r > RADIUS - 4)
