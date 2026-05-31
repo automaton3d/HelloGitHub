@@ -128,10 +128,15 @@ void step() {
          * That killed the center peak.  Removing it lets inward
          * waves accumulate, forming the sinc envelope naturally. */
 
-        /* NO radial boost — seno5.c compensated the 1/r decay
-         * with u_new += u_new >> (10 - (r >> 3)), flattening
-         * the profile to sin²(r).  Without it the natural 3-D
-         * wave solution sin(kr)/r is preserved.               */
+        /* Very weak radial boost — original seno5.c used base 10
+         * which fully compensated 1/r → flat sin²(r).
+         * Base 13 gives ~1/8 the strength: just enough to slow
+         * the outer decay without flattening the envelope.     */
+        if (r > 15) {
+            int boost_shift = 13 - (r >> 3);
+            if (boost_shift < 3) boost_shift = 3;
+            u_new += (u_new >> boost_shift);
+        }
 
         /* boundary absorption — shift-only replacement for:
          *   u_new = (u_new * (5 - dist)) >> 3               */
