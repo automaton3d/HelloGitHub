@@ -34,7 +34,6 @@
 #define SHELL_W     (L / 10)             /* 10 */
 #define CORE_R      3
 #define SHELL_TARGET 16384
-#define CORE_TARGET  32768               /* sinc² peaks at origin */
 
 /* ── visualisation ────────────────────────────────────────────────── */
 #define GRAPH_SCALE_X 16
@@ -143,19 +142,12 @@ void step(void)
             }
         }
 
-        /* ── core reinforcement (sinc² peaks at r=0) ────────── */
+        /* ── core: very light damping only (prevent blowup) ──── */
+        /* No reinforcement — let natural spherical convergence
+         * from the shell build a smooth dome at r=0.           */
         if (r < (CORE_R << 1))
         {
-            if (u < CORE_TARGET)
-            {
-                int deficit = CORE_TARGET - u;
-                v_new += (deficit >> 10) + 1;
-            }
-            else
-            {
-                int excess = u - CORE_TARGET;
-                v_new -= (excess >> 7);
-            }
+            v_new -= (v_new >> 6);
         }
 
         /* ── NO radial boost ─────────────────────────────────────
