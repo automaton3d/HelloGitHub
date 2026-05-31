@@ -33,7 +33,8 @@
 #define SHELL_R     22
 #define SHELL_W     (L / 10)             /* 10 */
 #define CORE_R      3
-#define SHELL_TARGET 8192                /* lower than sin² (was 16384) */
+#define SHELL_TARGET 16384
+#define CORE_TARGET  32768               /* sinc² peaks at origin */
 
 /* ── visualisation ────────────────────────────────────────────────── */
 #define GRAPH_SCALE_X 16
@@ -85,7 +86,7 @@ void init(void)
         grid[x][y][z].u  = 0;
         grid[x][y][z].v  = 0;
     }
-    grid[cx][cy][cz].u = 2048;
+    grid[cx][cy][cz].u = 8192;
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -142,11 +143,19 @@ void step(void)
             }
         }
 
-        /* ── core: mild damping (not as heavy as sin² version) ─── */
+        /* ── core reinforcement (sinc² peaks at r=0) ────────── */
         if (r < (CORE_R << 1))
         {
-            v_new -= (v_new >> 4);
-            u_new -= (u_new >> 5);
+            if (u < CORE_TARGET)
+            {
+                int deficit = CORE_TARGET - u;
+                v_new += (deficit >> 10) + 1;
+            }
+            else
+            {
+                int excess = u - CORE_TARGET;
+                v_new -= (excess >> 7);
+            }
         }
 
         /* ── NO radial boost ─────────────────────────────────────
