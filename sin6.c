@@ -187,6 +187,8 @@ void render(SDL_Renderer* renderer) {
     static int count[L] = {0};
     static int prev_profile[L] = {0};
     static int stable_frames = 0;
+    static float opt_k = 0.06f;       /* auto-optimised every 20 frames */
+    static int   opt_tick = -100;
 
     #define PEAK_HIST_W 600
     static int peak_history[PEAK_HIST_W] = {0};
@@ -199,6 +201,7 @@ void render(SDL_Renderer* renderer) {
 
     int cx = L/2, cy = L/2;
 
+    /* --- pass 1: accumulate profile + draw white circle --- */
     for(int x=0; x<L; x++)
     for(int y=0; y<L; y++)
     for(int z=0; z<L; z++) {
@@ -213,30 +216,11 @@ void render(SDL_Renderer* renderer) {
                 if(c < 0) c = 0;
                 SDL_SetRenderDrawColor(renderer, c, c, c, 255);
                 SDL_RenderPoint(renderer, x + 50, y + 50);
-
-                int dx = x - cx;
-                int dy = y - cy;
-                int rr = isqrt(dx*dx + dy*dy);
-                if(rr > 0 && rr < RADIUS) {
-                    float half = (float)(L * 11 / 20);
-                    float kv = (float)M_PI / half;
-                    float ref = rabssinf((float)rr, kv);
-                    float rpeak = 0;
-                    for(int rp=1; rp<RADIUS; rp++) {
-                        float v = rabssinf((float)rp, kv);
-                        if(v > rpeak) rpeak = v;
-                    }
-                    float norm = (rpeak > 0) ? sqrtf(ref / rpeak) : 0;
-                    int cref = (int)(norm * 255.0f);
-                    if(cref > 255) cref = 255;
-                    if(cref < 0) cref = 0;
-                    SDL_SetRenderDrawColor(renderer, 0, 0, cref, 255);
-                    SDL_RenderPoint(renderer, x + 800, y + 50);
-                }
             }
         }
     }
 
+    /* --- peak & error --- */
     long long error = 0;
     for(int r=0; r<RADIUS; r++) {
         int profile = count[r] > 0 ? (int)(sum[r] / count[r]) : 0;
@@ -244,12 +228,8 @@ void render(SDL_Renderer* renderer) {
         error += d;
         prev_profile[r] = profile;
     }
-
     if(error < STABILITY_THRESHOLD) stable_frames++;
     else stable_frames = 0;
-
-    int px0 = 100;
-    int py0 = 650;
 
     int peak = 1;
     for(int r=0; r<RADIUS; r++) {
@@ -259,70 +239,140 @@ void render(SDL_Renderer* renderer) {
         }
     }
 
-    peak_history[peak_idx] = peak;
-    peak_idx = (peak_idx + 1) % PEAK_HIST_W;
-
-    /* green: CA radial profile */
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-    for(int r=0; r<RADIUS; r++) {
-        if(count[r] > 0) {
-            int avg = (int)(sum[r] / count[r]);
-            int y = py0 - (avg * GRAPH_HEIGHT) / peak;
-            int xscreen = px0 + r * GRAPH_SCALE_X;
-            SDL_RenderPoint(renderer, xscreen, y);
+    /* --- auto-optimise k every 20 frames (uses r·|sin|) --- */
+    if(tick - opt_tick >= 20) {
+        opt_tick = tick;
+        double best_rmse = 999.0;
+        int rmax = RADIUS - 6;
+        for(float kc = 0.02f; kc < 0.20f; kc += 0.001f) {
+            float rp = 0;
+            for(int r = 1; r < rmax; r++) {
+                float v = r * fabsf(sinf(kc * r));
+                if(v > rp) rp = v;
+            }
+            if(rp < 1e-6f) continue;
+            double rs = 0; int rc = 0;
+            for(int r = 0; r < rmax; r++) {
+                if(count[r] > 0) {
+                    int avg = (int)(sum[r] / count[r]);
+                    double dn = (double)avg / (double)peak;
+                    double rn = (double)(r * fabsf(sinf(kc * r))) / rp;
+                    double d = dn - rn;
+                    rs += d * d; rc++;
+                }
+            }
+            double rmse = (rc > 0) ? sqrt(rs / rc) : 999;
+            if(rmse < best_rmse) { best_rmse = rmse; opt_k = kc; }
         }
     }
 
-    /* red: r · |sin(k·r)| reference */
-    float half = (float)(L * 11 / 20);
-    float kref = (float)M_PI / half;
+    float kref = opt_k;
+
+    /* --- blue reference circle (pass 2, z==L/2 only) --- */
+    {
+        float rpeak_2d = 0;
+        for(int rp=1; rp<RADIUS; rp++) {
+            float v = rabssinf((float)rp, kref);
+            if(v > rpeak_2d) rpeak_2d = v;
+        }
+        for(int x=0; x<L; x++)
+        for(int y=0; y<L; y++) {
+            int dx = x - cx;
+            int dy = y - cy;
+            int rr = isqrt(dx*dx + dy*dy);
+            if(rr > 0 && rr < RADIUS) {
+                float ref = rabssinf((float)rr, kref);
+                float norm = (rpeak_2d > 0) ? sqrtf(ref / rpeak_2d) : 0;
+                int cref = (int)(norm * 255.0f);
+                if(cref > 255) cref = 255;
+                if(cref < 0) cref = 0;
+                SDL_SetRenderDrawColor(renderer, 0, 0, cref, 255);
+                SDL_RenderPoint(renderer, x + 800, y + 50);
+            }
+        }
+    }
+
+    int px0 = 100;
+    int py0 = 650;
+    int graph_w = RADIUS * GRAPH_SCALE_X;
+
+    peak_history[peak_idx] = peak;
+    peak_idx = (peak_idx + 1) % PEAK_HIST_W;
+
+    /* green: CA radial profile — connected line */
+    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+    {
+        int gpx = -1, gpy = -1;
+        for(int r=0; r<RADIUS; r++) {
+            if(count[r] > 0) {
+                int avg = (int)(sum[r] / count[r]);
+                int y = py0 - (avg * GRAPH_HEIGHT) / peak;
+                int xscreen = px0 + r * GRAPH_SCALE_X;
+                if(gpx >= 0)
+                    SDL_RenderLine(renderer, gpx, gpy, xscreen, y);
+                gpx = xscreen;
+                gpy = y;
+            }
+        }
+    }
+
+    /* red: r · |sin(k·r)| reference with boundary window */
     float ref_peak = 0.0f;
-    for(float rf=0.1f; rf<(float)RADIUS; rf+=0.02f) {
+    for(float rf=0.1f; rf<(float)(RADIUS - 6); rf+=0.02f) {
         float ref = rabssinf(rf, kref);
         if(ref > ref_peak) ref_peak = ref;
     }
 
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    int prevx = -1, prevy = -1;
-    for(float rf=0.1f; rf<(float)RADIUS; rf+=0.02f) {
-        float ref = rabssinf(rf, kref);
-        int yref = py0 - (int)((ref / ref_peak) * GRAPH_HEIGHT);
-        int xscreen = px0 + (int)(rf * GRAPH_SCALE_X);
-        if(prevx >= 0)
-            SDL_RenderLine(renderer, prevx, prevy, xscreen, yref);
-        prevx = xscreen;
-        prevy = yref;
-    }
-
-    /* yellow: peak history (auto-scaled) */
-    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
-    int max_val = 1;
-    for(int i = 0; i < PEAK_HIST_W; i++) {
-        if(peak_history[i] > max_val) max_val = peak_history[i];
-    }
-    max_val = max_val + (max_val >> 3);  /* 12.5% headroom */
-    int last_x = -1, last_y = -1;
-
-    for(int i = 0; i < PEAK_HIST_W; i++) {
-        int val = peak_history[i];
-        if(val == 0) continue;
-
-        int x_pos = px0 + i;
-        int y_pos = py0 - (val * GRAPH_HEIGHT) / max_val;
-
-        if(i == peak_idx) last_x = -1;
-
-        if(last_x >= 0) {
-            SDL_RenderLine(renderer, last_x, last_y, x_pos, y_pos);
+    {
+        int prevx = -1, prevy = -1;
+        for(float rf=0.1f; rf<(float)RADIUS; rf+=0.02f) {
+            float ref = rabssinf(rf, kref);
+            /* boundary window: fade reference to zero in last 8 cells */
+            if(rf > RADIUS - 8) {
+                float bw = ((float)RADIUS - rf) / 8.0f;
+                if(bw < 0) bw = 0;
+                ref *= bw;
+            }
+            int yref = py0 - (int)((ref / ref_peak) * GRAPH_HEIGHT);
+            if(yref < py0 - GRAPH_HEIGHT) yref = py0 - GRAPH_HEIGHT;
+            int xscreen = px0 + (int)(rf * GRAPH_SCALE_X);
+            if(prevx >= 0)
+                SDL_RenderLine(renderer, prevx, prevy, xscreen, yref);
+            prevx = xscreen;
+            prevy = yref;
         }
-        last_x = x_pos;
-        last_y = y_pos;
     }
 
-    /* RMSE vs r·|sin(k·r)| */
+    /* yellow: peak history — scaled to graph width */
+    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    {
+        int max_val = 1;
+        for(int i = 0; i < PEAK_HIST_W; i++)
+            if(peak_history[i] > max_val) max_val = peak_history[i];
+        max_val = max_val + (max_val >> 3);
+
+        int last_x = -1, last_y = -1;
+        for(int i = 0; i < PEAK_HIST_W; i++) {
+            int val = peak_history[i];
+            if(val == 0) continue;
+
+            int x_pos = px0 + (i * graph_w) / PEAK_HIST_W;
+            int y_pos = py0 - (val * GRAPH_HEIGHT) / max_val;
+
+            if(i == peak_idx) last_x = -1;
+
+            if(last_x >= 0)
+                SDL_RenderLine(renderer, last_x, last_y, x_pos, y_pos);
+            last_x = x_pos;
+            last_y = y_pos;
+        }
+    }
+
+    /* RMSE vs r·|sin(k·r)| — excluding boundary zone */
     double rmse_sum = 0.0;
     int rmse_count = 0;
-    for(int r=0; r<RADIUS; r++) {
+    for(int r=0; r<RADIUS - 6; r++) {
         if(count[r] > 0) {
             int avg = (int)(sum[r] / count[r]);
             double dyn_norm = (double)avg / (double)peak;
@@ -336,8 +386,8 @@ void render(SDL_Renderer* renderer) {
     double rmse = (rmse_count > 0) ? sqrt(rmse_sum / rmse_count) : 0.0;
 
     SDL_SetRenderDrawColor(renderer, 100,100,100,255);
-    SDL_RenderLine(renderer, px0, py0, px0 + (L/2)*GRAPH_SCALE_X, py0);
-    int midx = px0 + (L/4)*GRAPH_SCALE_X;
+    SDL_RenderLine(renderer, px0, py0, px0 + graph_w, py0);
+    int midx = px0 + graph_w / 2;
     SDL_RenderLine(renderer, midx, py0, midx, py0 - GRAPH_HEIGHT);
 
     printf("error=%lld stable=%d peak=%d RMSE=%.4f      \r",
