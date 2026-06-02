@@ -198,8 +198,9 @@ void render(SDL_Renderer* renderer) {
     static int count[L] = {0};
     static int prev_profile[L] = {0};
     static int stable_frames = 0;
-    static float opt_k = 0.06f;       /* auto-optimised every 20 frames */
+    static float opt_k = 0.06f;       /* auto-optimised during warmup */
     static int   opt_tick = -100;
+    static int   k_locked = 0;          /* 1 once k is frozen */
 
     #define PEAK_HIST_W 600
     static int peak_history[PEAK_HIST_W] = {0};
@@ -250,9 +251,10 @@ void render(SDL_Renderer* renderer) {
         }
     }
 
-    /* --- auto-optimise k every 20 frames --- */
-    if(tick - opt_tick >= 20) {
+    /* --- auto-optimise k during warmup, then lock --- */
+    if(!k_locked && tick - opt_tick >= 20) {
         opt_tick = tick;
+        if(tick >= 800) k_locked = 1;   /* freeze after warmup */
         double best_rmse = 999.0;
         int rmax = RADIUS - 6;           /* exclude boundary zone */
         for(float kc = 0.02f; kc < 0.20f; kc += 0.001f) {
