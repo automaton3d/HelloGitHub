@@ -94,7 +94,7 @@ void init() {
  *      Stabilises the centre (prevents standing-wave blow-up at r = 0).
  *   4) Shell forcing:         excess >> 6, deficit >> 12
  *      Same as seno5.c — maintains standing wave in shell band.
- *   5) Global damping:        >> 11  (same as seno5.c)
+ *   5) Global damping:        >> 10  (slightly stronger than seno5.c)
  */
 void step() {
     for(int x=1; x<L-1; x++)
@@ -175,8 +175,8 @@ void step() {
     for(int x=0; x<L; x++)
     for(int y=0; y<L; y++)
     for(int z=0; z<L; z++) {
-        grid[x][y][z].u = next[x][y][z].u - (next[x][y][z].u >> 11);
-        grid[x][y][z].v = next[x][y][z].v - (next[x][y][z].v >> 11);
+        grid[x][y][z].u = next[x][y][z].u - (next[x][y][z].u >> 10);
+        grid[x][y][z].v = next[x][y][z].v - (next[x][y][z].v >> 10);
         grid[x][y][z].r2 = next[x][y][z].r2;
         grid[x][y][z].r  = next[x][y][z].r;
     }
@@ -305,9 +305,13 @@ void render(SDL_Renderer* renderer) {
         prevy = yref;
     }
 
-    /* yellow: peak history */
+    /* yellow: peak history (auto-scaled) */
     SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
-    int max_val = L * L;
+    int max_val = 1;
+    for(int i = 0; i < PEAK_HIST_W; i++) {
+        if(peak_history[i] > max_val) max_val = peak_history[i];
+    }
+    max_val = max_val + (max_val >> 3);  /* 12.5% headroom */
     int last_x = -1, last_y = -1;
 
     for(int i = 0; i < PEAK_HIST_W; i++) {
