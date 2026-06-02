@@ -198,9 +198,6 @@ void render(SDL_Renderer* renderer) {
     static int count[L] = {0};
     static int prev_profile[L] = {0};
     static int stable_frames = 0;
-    static float opt_k = 0.06f;       /* auto-optimised during warmup */
-    static int   opt_tick = -100;
-    static int   k_locked = 0;          /* 1 once k is frozen */
 
     #define PEAK_HIST_W 600
     static int peak_history[PEAK_HIST_W] = {0};
@@ -251,37 +248,8 @@ void render(SDL_Renderer* renderer) {
         }
     }
 
-    /* --- auto-optimise k during warmup, then lock --- */
-    if(!k_locked && tick - opt_tick >= 20) {
-        opt_tick = tick;
-        if(tick >= 800) k_locked = 1;   /* freeze after warmup */
-        double best_rmse = 999.0;
-        int rmax = RADIUS - 6;           /* exclude boundary zone */
-        for(float kc = 0.02f; kc < 0.20f; kc += 0.001f) {
-            float rp = 0;
-            for(int r = 1; r < rmax; r++) {
-                float s = sinf(kc * r);
-                float v = r * s * s;
-                if(v > rp) rp = v;
-            }
-            if(rp < 1e-6f) continue;
-            double rs = 0; int rc = 0;
-            for(int r = 0; r < rmax; r++) {
-                if(count[r] > 0) {
-                    int avg = (int)(sum[r] / count[r]);
-                    double dn = (double)avg / (double)peak;
-                    float s = sinf(kc * r);
-                    double rn = (double)(r * s * s) / rp;
-                    double d = dn - rn;
-                    rs += d * d; rc++;
-                }
-            }
-            double rmse = (rc > 0) ? sqrt(rs / rc) : 999;
-            if(rmse < best_rmse) { best_rmse = rmse; opt_k = kc; }
-        }
-    }
-
-    float kref = opt_k;
+    /* --- static reference k: deterministic from L --- */
+    float kref = (float)M_PI / (float)(L / 2);
 
     /* --- blue reference circle (pass 2, z==L/2 only) --- */
     {
