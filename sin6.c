@@ -335,10 +335,10 @@ void render(SDL_Renderer* renderer) {
         }
     }
 
-    /* RMSE vs r·|sin(k·r)| — excluding boundary zone */
+    /* RMSE vs r·|sin(k·r)| — full range */
     double rmse_sum = 0.0;
     int rmse_count = 0;
-    for(int r=0; r<RADIUS - 6; r++) {
+    for(int r=0; r<RADIUS; r++) {
         if(count[r] > 0) {
             int avg = (int)(sum[r] / count[r]);
             double dyn_norm = (double)avg / (double)peak;
