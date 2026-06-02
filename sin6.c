@@ -288,9 +288,9 @@ void render(SDL_Renderer* renderer) {
         }
     }
 
-    /* red: r · |sin(k·r)| reference with boundary window */
+    /* red: r · |sin(k·r)| reference (pure mathematical curve) */
     float ref_peak = 0.0f;
-    for(float rf=0.1f; rf<(float)(RADIUS - 6); rf+=0.02f) {
+    for(float rf=0.1f; rf<(float)RADIUS; rf+=0.02f) {
         float ref = rabssinf(rf, kref);
         if(ref > ref_peak) ref_peak = ref;
     }
@@ -300,12 +300,6 @@ void render(SDL_Renderer* renderer) {
         int prevx = -1, prevy = -1;
         for(float rf=0.1f; rf<(float)RADIUS; rf+=0.02f) {
             float ref = rabssinf(rf, kref);
-            /* boundary window: fade reference to zero in last 8 cells */
-            if(rf > RADIUS - 8) {
-                float bw = ((float)RADIUS - rf) / 8.0f;
-                if(bw < 0) bw = 0;
-                ref *= bw;
-            }
             int yref = py0 - (int)((ref / ref_peak) * GRAPH_HEIGHT);
             if(yref < py0 - GRAPH_HEIGHT) yref = py0 - GRAPH_HEIGHT;
             int xscreen = px0 + (int)(rf * GRAPH_SCALE_X);
