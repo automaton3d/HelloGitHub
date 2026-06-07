@@ -9,7 +9,7 @@ all: hello mytry
 hello: hello.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-mytry: mytry.c
+mytry: mytry.c pulsating.h
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:

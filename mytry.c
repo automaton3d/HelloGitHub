@@ -1,53 +1,38 @@
 /*
- * mytry.c
+ * mytry.c — unified sinc wave CA + pulsating wavefront CA
  *
- *  * Spherical distribution of a sinusoidal function: sin(r)/r
- * (the natural radial solution of the 3-D wave equation).
+ * Two independent CAs share the same grid structure:
+ *   1) Sinc wave: 3-D integer-only wave equation → emergent sin(r)/r
+ *      with Bresenham accumulator triggers.
+ *   2) Pulsating wavefront: BFS distance propagation with pulsing shell.
  *
- * Constraints inside step():
+ * No interaction between the two CAs (for now).
+ *
+ * Constraints inside sinc_step():
  *   - no floating-point
  *   - no multiplication (*)
  *   - no division (/)
  *   - no lookup tables
  */
-#define MYTRY
-#ifdef MYTRY
 
-#include <SDL3/SDL.h>
+#include "pulsating.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-#define L 101
-#define WINDOW_W 1850
-#define WINDOW_H 700
-#define GRAPH_HEIGHT 500
-#define RADIUS      (L/2 - 2)
-#define DIFF_SHIFT  4
-#define SHELL_R (L * 12 / 100)
-#define SHELL_W (L/10)
-#define CORE_R 3
-#define SHELL_TARGET 16384
-#define GRAPH_SCALE_X 16
-#define STABILITY_THRESHOLD 35
-#define STABILITY_FRAMES    180
+/* --- Grid allocation (heap, too large for stack) --- */
+Cell (*grid)[L][L]      = NULL;
+Cell (*grid_next)[L][L] = NULL;
 
-typedef struct {
-    int u;   // displacement
-    int v;   // velocity
-    int r2;
-    int r;   // precomputed integer radius
-    int acc; // accumulator
-    int sinc_p; // numerator   of emergent normalized sinc(r)
-    int sinc_q; // denominator of emergent normalized sinc(r)
-} Cell;
-
-Cell grid[L][L][L];
-Cell next[L][L][L];
-
+const int MID   = L / 2;
+const int R_MAX = L / 2;
 int tick = 0;
 
-/* Integer square root — shift-only, no division, no multiplication */
-int isqrt(int n) {
+/* ==========================================================
+ * Integer square root — shift-only, no division, no multiply
+ * ========================================================== */
+static int isqrt(int n) {
     if (n <= 0) return 0;
     int result = 0;
     int bit = 1 << 30;
@@ -64,17 +49,18 @@ int isqrt(int n) {
     return result;
 }
 
-void init() {
+/* ==========================================================
+ * Sinc wave CA — initialization
+ * ========================================================== */
+void sinc_init(void) {
     int cx = L/2, cy = L/2, cz = L/2;
-    /* Incremental squares: dx² computed without multiply.
-     * (d+1)² = d² + (d << 1) + 1  */
+
+    /* Incremental squares: d² via sum of odds (no multiply) */
     int dx2_table[L];
     for (int i = 0; i < L; i++) {
         int d = i - cx;
-        /* compute d² by repeated addition */
         int absd = d < 0 ? -d : d;
-        int sq = 0;
-        int odd = 1;
+        int sq = 0, odd = 1;
         for (int k = 0; k < absd; k++) {
             sq += odd;
             odd += 2;
@@ -82,35 +68,28 @@ void init() {
         dx2_table[i] = sq;
     }
 
-    for(int x=0; x<L; x++)
-    for(int y=0; y<L; y++)
-    for(int z=0; z<L; z++) {
-        int r2 = dx2_table[x] + dx2_table[y] + dx2_table[z];
-        int r  = isqrt(r2);
-        grid[x][y][z].r2 = r2;
-        grid[x][y][z].r  = r;
-        grid[x][y][z].u  = 0;
-        grid[x][y][z].v  = 0;
-        grid[x][y][z].sinc_p = 0;
-        grid[x][y][z].sinc_q = 1;
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++) {
+        Cell *c = &grid[x][y][z];
+        c->r2   = dx2_table[x] + dx2_table[y] + dx2_table[z];
+        c->r    = isqrt(c->r2);
+        c->u    = 0;
+        c->v    = 0;
+        c->acc  = 0;
+        c->sinc_p = 0;
+        c->sinc_q = 1;
     }
     grid[cx][cy][cz].u = 2048;
 }
 
-/*
- * step() – ONE CA tick.  Integer-only: no *, no /, no floats, no tables.
- *
- *   1) 6*u        → (u << 2) + (u << 1)
- *   2) r / 16     → r >> 4
- *   3) CORE_R * 2 → CORE_R << 1
- *   4) Radial boost REMOVED (sinc² emerges from natural 3-D convergence)
- *   5) Boundary multiply replaced with shift cascade
- *   6) r precomputed in init(), no isqrt() call here
- */
-void step() {
-    for(int x=1; x<L-1; x++)
-    for(int y=1; y<L-1; y++)
-    for(int z=1; z<L-1; z++) {
+/* ==========================================================
+ * Sinc wave CA — one tick (integer-only in the hot loop)
+ * ========================================================== */
+void sinc_step(void) {
+    for (int x = 1; x < L-1; x++)
+    for (int y = 1; y < L-1; y++)
+    for (int z = 1; z < L-1; z++) {
         int u = grid[x][y][z].u;
         int v = grid[x][y][z].v;
 
@@ -135,7 +114,7 @@ void step() {
         /* shell forcing */
         int dr = r - SHELL_R;
         if (dr < 0) dr = -dr;
-        if(dr <= SHELL_W) {
+        if (dr <= SHELL_W) {
             if (u > SHELL_TARGET) {
                 int excess = u - SHELL_TARGET;
                 v_new -= (excess >> 4);
@@ -146,83 +125,151 @@ void step() {
             }
         }
 
-        /* NO radial boost — the 3-D wave equation naturally
-         * produces sin(kr)/r; removing the boost (seno5.c used
-         * base 10) preserves the 1/r envelope and makes the
-         * profile scalable across different L values. */
-
-        /* NO core damping — spherical convergence from the
-         * shell builds the natural sinc peak at r=0. */
-
-        /* boundary absorption — shift-only replacement for:
-         *   u_new = (u_new * (5 - dist)) >> 3               */
-        if(r > RADIUS - 4) {
+        /* boundary absorption — shift-only */
+        if (r > RADIUS - 4) {
             int dist = r - (RADIUS - 4);
             if (dist >= 4)      u_new = 0;
             else if (dist == 3) u_new = u_new >> 2;
             else if (dist == 2) u_new = (u_new >> 2) + (u_new >> 3);
             else                u_new = u_new >> 1;
         }
-        if(r >= RADIUS) u_new = 0;
+        if (r >= RADIUS) u_new = 0;
+        if (u_new < 0) u_new = 0;
 
-        if(u_new < 0) u_new = 0;
-
-        /* Bresenham-style accumulator: triggers when acc >= sinc_q */
+        /* Bresenham-style accumulator trigger */
         int acc = grid[x][y][z].acc + grid[x][y][z].sinc_p;
         if (acc >= grid[x][y][z].sinc_q && grid[x][y][z].sinc_q > 0) {
             acc -= grid[x][y][z].sinc_q;
             /* TRIGGERED — action to be defined later */
         }
 
-        next[x][y][z].u = u_new;
-        next[x][y][z].v = v_new;
-        next[x][y][z].r2 = grid[x][y][z].r2;
-        next[x][y][z].r  = r;
-        next[x][y][z].acc = acc;
-        next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
-        next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
+        grid_next[x][y][z].u      = u_new;
+        grid_next[x][y][z].v      = v_new;
+        grid_next[x][y][z].r2     = grid[x][y][z].r2;
+        grid_next[x][y][z].r      = r;
+        grid_next[x][y][z].acc    = acc;
+        grid_next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
+        grid_next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
     }
 
-    for(int x=0; x<L; x++)
-    for(int y=0; y<L; y++)
-    for(int z=0; z<L; z++) {
-        grid[x][y][z].u = next[x][y][z].u - (next[x][y][z].u >> 12);
-        grid[x][y][z].v = next[x][y][z].v - (next[x][y][z].v >> 12);
-        grid[x][y][z].r2 = next[x][y][z].r2;
-        grid[x][y][z].r  = next[x][y][z].r;
-        grid[x][y][z].acc = next[x][y][z].acc;
-        grid[x][y][z].sinc_p = next[x][y][z].sinc_p;
-        grid[x][y][z].sinc_q = next[x][y][z].sinc_q;
+    /* copy back with global damping */
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++) {
+        grid[x][y][z].u      = grid_next[x][y][z].u - (grid_next[x][y][z].u >> 12);
+        grid[x][y][z].v      = grid_next[x][y][z].v - (grid_next[x][y][z].v >> 12);
+        grid[x][y][z].r2     = grid_next[x][y][z].r2;
+        grid[x][y][z].r      = grid_next[x][y][z].r;
+        grid[x][y][z].acc    = grid_next[x][y][z].acc;
+        grid[x][y][z].sinc_p = grid_next[x][y][z].sinc_p;
+        grid[x][y][z].sinc_q = grid_next[x][y][z].sinc_q;
     }
-
-    tick++;
 }
 
-/* ------------------------------------------------------------------ */
-/* Rendering with SDL3                                                */
-/* ------------------------------------------------------------------ */
+/* ==========================================================
+ * Pulsating wavefront CA — initialization
+ * ========================================================== */
+void pulse_init(void) {
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++) {
+        grid[x][y][z].wave_r2 = INF_R2;
+    }
+    grid[MID][MID][MID].wave_r2 = 0;
+}
 
-#define MAX_TICKS    2000
-#define PRINT_EVERY  100
+/* ==========================================================
+ * Pulsating wavefront CA — deterministic pulse threshold
+ * ========================================================== */
+unsigned int pulse_from_time(unsigned int t) {
+    const unsigned int min_r2 = 25;
+    const unsigned int max_r2 = (unsigned int)(R_MAX * R_MAX * 0.92);
+    const unsigned int step = 7;
+    unsigned int span = max_r2 - min_r2;
+    if (span == 0) return min_r2;
+    unsigned int period = 2 * span;
+    unsigned int phase = (t * step) % period;
+    if (phase < span)
+        return min_r2 + phase;
+    else
+        return max_r2 - (phase - span);
+}
+
+/* ==========================================================
+ * Pulsating wavefront CA — one tick
+ * ========================================================== */
+static void pulse_update_wavefront(void) {
+    /* copy current wave_r2 into grid_next */
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++)
+        grid_next[x][y][z].wave_r2 = grid[x][y][z].wave_r2;
+
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++) {
+        if (grid[x][y][z].wave_r2 == INF_R2) continue;
+
+        unsigned ax = (x > MID) ? (unsigned)(x - MID) : (unsigned)(MID - x);
+        unsigned ay = (y > MID) ? (unsigned)(y - MID) : (unsigned)(MID - y);
+        unsigned az = (z > MID) ? (unsigned)(z - MID) : (unsigned)(MID - z);
+
+        /* 6 neighbors */
+        int dx[6] = {1, -1, 0,  0, 0,  0};
+        int dy[6] = {0,  0, 1, -1, 0,  0};
+        int dz[6] = {0,  0, 0,  0, 1, -1};
+
+        for (int d = 0; d < 6; d++) {
+            int nx = x + dx[d];
+            int ny = y + dy[d];
+            int nz = z + dz[d];
+            if (nx < 0 || nx >= L || ny < 0 || ny >= L || nz < 0 || nz >= L)
+                continue;
+
+            unsigned diff;
+            if (d < 2) diff = 2 * ax + 1;
+            else if (d < 4) diff = 2 * ay + 1;
+            else diff = 2 * az + 1;
+
+            unsigned int new_r2 = grid[x][y][z].wave_r2 + diff;
+            if (new_r2 < grid_next[nx][ny][nz].wave_r2) {
+                grid_next[nx][ny][nz].wave_r2 = new_r2;
+            }
+        }
+    }
+}
+
+void pulse_step(void) {
+    pulse_update_wavefront();
+    grid_next[MID][MID][MID].wave_r2 = 0;
+
+    /* copy wave_r2 back */
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++)
+        grid[x][y][z].wave_r2 = grid_next[x][y][z].wave_r2;
+}
+
+/* ==========================================================
+ * Rendering (SDL3)
+ * ========================================================== */
+
 #define PEAK_HIST_W  600
 
 static long profile[L];
 static long prev_profile[L];
-static int  count[L];
+static int  rcount[L];
 static int  peak_history[PEAK_HIST_W];
 static int  peak_idx = 0;
-static int  stable_frames = 0;
-static int  converged = 0;
+static int  sinc_stable_frames = 0;
+static int  sinc_converged = 0;
 static long u_peak = 0;
-
-/* triggered[x][y] = 1 if any cell at (x,y,L/2) triggered this tick */
-static int triggered_slice[L][L];
 
 static void compute_profile(void) {
     for (int i = 0; i < L; i++) {
         prev_profile[i] = profile[i];
         profile[i] = 0;
-        count[i] = 0;
+        rcount[i] = 0;
     }
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
@@ -230,12 +277,12 @@ static void compute_profile(void) {
         int r = grid[x][y][z].r;
         if (r < L) {
             profile[r] += grid[x][y][z].u;
-            count[r]++;
+            rcount[r]++;
         }
     }
     for (int i = 0; i < L; i++) {
-        if (count[i] > 0)
-            profile[i] /= count[i];
+        if (rcount[i] > 0)
+            profile[i] /= rcount[i];
     }
 }
 
@@ -249,33 +296,19 @@ static long profile_max_change(void) {
     return maxd;
 }
 
-/* Compute trigger slice at z=L/2 for this tick */
-static void compute_trigger_slice(void) {
-    int cz = L/2;
-    for (int x = 0; x < L; x++)
-    for (int y = 0; y < L; y++) {
-        int acc = grid[x][y][cz].acc + grid[x][y][cz].sinc_p;
-        if (acc >= grid[x][y][cz].sinc_q && grid[x][y][cz].sinc_q > 0) {
-            triggered_slice[x][y] = 1;
-        } else {
-            triggered_slice[x][y] = 0;
-        }
-    }
-}
-
-static void render(SDL_Renderer *renderer) {
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
+void render_frame(SDL_Renderer *ren) {
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_RenderClear(ren);
 
     compute_profile();
     long max_change = profile_max_change();
 
-    if (!converged) {
-        if (max_change < STABILITY_THRESHOLD) stable_frames++;
-        else stable_frames = 0;
-        if (stable_frames >= STABILITY_FRAMES) {
-            converged = 1;
-            /* set rationals from emergent profile */
+    /* detect sinc convergence → set rationals */
+    if (!sinc_converged) {
+        if (max_change < STABILITY_THRESHOLD) sinc_stable_frames++;
+        else sinc_stable_frames = 0;
+        if (sinc_stable_frames >= STABILITY_FRAMES) {
+            sinc_converged = 1;
             u_peak = 0;
             for (int r = 0; r < RADIUS; r++)
                 if (profile[r] > u_peak) u_peak = profile[r];
@@ -288,83 +321,123 @@ static void render(SDL_Renderer *renderer) {
                     grid[x][y][z].acc = 0;
                 }
             }
-            printf("Converged at tick %d — triggers active.\n", tick);
+            printf("Sinc converged at tick %d — triggers active.\n", tick);
         }
     }
 
-    /* peak value */
     int peak = 1;
     for (int r = 0; r < RADIUS; r++) {
-        if (count[r] > 0 && profile[r] > peak)
+        if (rcount[r] > 0 && profile[r] > peak)
             peak = (int)profile[r];
     }
     peak_history[peak_idx] = peak;
     peak_idx = (peak_idx + 1) % PEAK_HIST_W;
 
-    /* --- 1) 2D displacement slice (top-left) --- */
+    /* -------------------------------------------------------
+     * Top-left: sinc displacement slice (z = MID)
+     * ------------------------------------------------------- */
     {
-        int cz = L/2;
+        int cz = MID;
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++) {
             int c = grid[x][y][cz].u >> 3;
             if (c > 255) c = 255;
             if (c < 0) c = 0;
-            SDL_SetRenderDrawColor(renderer, (Uint8)c, (Uint8)c, (Uint8)c, 255);
-            SDL_RenderPoint(renderer, (float)(x + 50), (float)(y + 20));
+            SDL_SetRenderDrawColor(ren, (Uint8)c, (Uint8)c, (Uint8)c, 255);
+            SDL_RenderPoint(ren, (float)(x + 30), (float)(y + 10));
         }
     }
 
-    /* --- 2) Trigger cloud slice (top-right) --- */
-    if (converged) {
-        compute_trigger_slice();
+    /* -------------------------------------------------------
+     * Top-middle: trigger cloud slice (z = MID)
+     * ------------------------------------------------------- */
+    {
+        int ox = 30 + L + 20;
+        if (sinc_converged) {
+            for (int x = 0; x < L; x++)
+            for (int y = 0; y < L; y++) {
+                int cz = MID;
+                int acc = grid[x][y][cz].acc + grid[x][y][cz].sinc_p;
+                if (acc >= grid[x][y][cz].sinc_q && grid[x][y][cz].sinc_q > 0) {
+                    SDL_SetRenderDrawColor(ren, 0, 255, 255, 255);
+                } else {
+                    int c = grid[x][y][cz].u >> 5;
+                    if (c > 60) c = 60;
+                    if (c < 0) c = 0;
+                    SDL_SetRenderDrawColor(ren, 0, 0, (Uint8)c, 255);
+                }
+                SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
+            }
+        } else {
+            SDL_SetRenderDrawColor(ren, 30, 30, 30, 255);
+            for (int x = 0; x < L; x++)
+            for (int y = 0; y < L; y++)
+                SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
+        }
+    }
+
+    /* -------------------------------------------------------
+     * Top-right: pulsating wavefront slice (z = MID)
+     * ------------------------------------------------------- */
+    {
+        int ox = 30 + L + 20 + L + 20;
+        unsigned int pulse_thr = pulse_from_time((unsigned int)tick);
+
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++) {
-            if (triggered_slice[x][y]) {
-                SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255);
+            unsigned int wr2 = grid[x][y][MID].wave_r2;
+            uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
+
+            if (wr2 == INF_R2) {
+                /* unvisited */
+            } else if (wr2 == pulse_thr) {
+                pix_r = 255; pix_g = 255; pix_b = 0;  /* shell = yellow */
             } else {
-                int c = grid[x][y][L/2].u >> 5;
-                if (c > 80) c = 80;
-                SDL_SetRenderDrawColor(renderer, 0, 0, (Uint8)c, 255);
+                /* shade by distance */
+                int c = 255 - (isqrt((int)wr2) * 4);
+                if (c < 0) c = 0;
+                pix_g = (uint32_t)c;
             }
-            SDL_RenderPoint(renderer, (float)(x + 200 + L), (float)(y + 20));
+
+            if (x == MID && y == MID) {
+                pix_r = 0; pix_g = 0; pix_b = 255;  /* center = blue */
+            }
+
+            SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
+            SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
         }
-    } else {
-        /* before convergence, show "waiting" */
-        SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
-        for (int x = 0; x < L; x++)
-        for (int y = 0; y < L; y++)
-            SDL_RenderPoint(renderer, (float)(x + 200 + L), (float)(y + 20));
     }
 
-    /* --- Graph area (bottom half) --- */
-    int px0 = 100;
-    int py0 = WINDOW_H - 50;
+    /* -------------------------------------------------------
+     * Bottom: sinc(r) profile graph
+     * ------------------------------------------------------- */
+    int px0 = 80;
+    int py0 = WINDOW_H - 40;
     int graph_w = RADIUS * GRAPH_SCALE_X;
 
     /* axis */
-    SDL_SetRenderDrawColor(renderer, 80, 80, 80, 255);
-    SDL_RenderLine(renderer, (float)px0, (float)py0,
+    SDL_SetRenderDrawColor(ren, 80, 80, 80, 255);
+    SDL_RenderLine(ren, (float)px0, (float)py0,
                    (float)(px0 + graph_w), (float)py0);
 
-    /* --- 3a) Green: emergent sinc(r) profile --- */
-    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+    /* green: sinc(r) profile */
+    SDL_SetRenderDrawColor(ren, 0, 255, 0, 255);
     {
         float gpx = -1, gpy = -1;
         for (int r = 0; r < RADIUS; r++) {
-            if (count[r] > 0) {
-                int avg = (int)profile[r];
-                float yf = (float)py0 - ((float)avg * GRAPH_HEIGHT) / (float)peak;
+            if (rcount[r] > 0) {
+                float yf = (float)py0 - ((float)profile[r] * GRAPH_HEIGHT) / (float)peak;
                 float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
                 if (gpx >= 0)
-                    SDL_RenderLine(renderer, gpx, gpy, xf, yf);
+                    SDL_RenderLine(ren, gpx, gpy, xf, yf);
                 gpx = xf;
                 gpy = yf;
             }
         }
     }
 
-    /* --- 3b) Yellow: peak history --- */
-    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    /* yellow: peak history */
+    SDL_SetRenderDrawColor(ren, 255, 255, 0, 255);
     {
         int max_val = 1;
         for (int i = 0; i < PEAK_HIST_W; i++)
@@ -379,36 +452,37 @@ static void render(SDL_Renderer *renderer) {
             float yf = (float)py0 - ((float)val * (float)GRAPH_HEIGHT) / (float)max_val;
             if (i == peak_idx) last_x = -1;
             if (last_x >= 0)
-                SDL_RenderLine(renderer, last_x, last_y, xf, yf);
+                SDL_RenderLine(ren, last_x, last_y, xf, yf);
             last_x = xf;
             last_y = yf;
         }
     }
 
-    /* --- 3c) Cyan: trigger rate per radius (after convergence) --- */
-    if (converged) {
-        SDL_SetRenderDrawColor(renderer, 0, 200, 255, 255);
+    /* cyan: trigger rate (after convergence) */
+    if (sinc_converged) {
+        SDL_SetRenderDrawColor(ren, 0, 200, 255, 255);
         float cpx = -1, cpy = -1;
         for (int r = 0; r < RADIUS; r++) {
-            /* trigger rate = sinc_p / sinc_q, draw normalized to 1 at peak */
-            long sp = profile[r];  /* sinc_p == u at convergence */
-            float rate = (u_peak > 0) ? (float)sp / (float)u_peak : 0;
+            float rate = (u_peak > 0) ? (float)profile[r] / (float)u_peak : 0;
             float yf = (float)py0 - rate * (float)GRAPH_HEIGHT;
             float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
             if (cpx >= 0)
-                SDL_RenderLine(renderer, cpx, cpy, xf, yf);
+                SDL_RenderLine(ren, cpx, cpy, xf, yf);
             cpx = xf;
             cpy = yf;
         }
     }
 
     printf("\r[tick %4d] peak=%d stable=%d converged=%d  ",
-           tick, peak, stable_frames, converged);
+           tick, peak, sinc_stable_frames, sinc_converged);
     fflush(stdout);
 
-    SDL_RenderPresent(renderer);
+    SDL_RenderPresent(ren);
 }
 
+/* ==========================================================
+ * Main — runs both CAs in lockstep
+ * ========================================================== */
 int main(void) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         printf("SDL_Init error: %s\n", SDL_GetError());
@@ -416,7 +490,8 @@ int main(void) {
     }
 
     SDL_Window *window = SDL_CreateWindow(
-        "mytry CA — sinc(r) + triggers", WINDOW_W, WINDOW_H, 0);
+        "CA — sinc(r) + pulsating wavefront",
+        WINDOW_W, WINDOW_H, 0);
     if (!window) {
         printf("Window error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -431,7 +506,19 @@ int main(void) {
         return 1;
     }
 
-    init();
+    /* allocate grids on heap */
+    grid      = malloc(sizeof(Cell) * L * L * L);
+    grid_next = malloc(sizeof(Cell) * L * L * L);
+    if (!grid || !grid_next) {
+        printf("Out of memory\n");
+        return 1;
+    }
+    memset(grid,      0, sizeof(Cell) * L * L * L);
+    memset(grid_next, 0, sizeof(Cell) * L * L * L);
+
+    /* initialize both CAs independently */
+    sinc_init();
+    pulse_init();
 
     int running = 1;
     while (running) {
@@ -440,15 +527,19 @@ int main(void) {
             if (e.type == SDL_EVENT_QUIT) running = 0;
         }
 
-        step();
-        render(renderer);
+        /* step both CAs */
+        sinc_step();
+        pulse_step();
+        tick++;
+
+        render_frame(renderer);
         SDL_Delay(16);
     }
 
+    free(grid);
+    free(grid_next);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
 }
-
-#endif /* MYTRY */
