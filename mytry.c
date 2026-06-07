@@ -409,30 +409,35 @@ void render_frame(SDL_Renderer *ren) {
     }
 
     /* -------------------------------------------------------
-     * Top-right: pulsating wavefront slice (z = MID)
+     * Top-right: trigger + fired only (no wavefront background)
+     * Cyan = Bresenham trigger firing this tick
+     * Red  = persistent fired (trigger + shell coincidence)
      * ------------------------------------------------------- */
     {
         int ox = 30 + L + 20 + L + 20;
-        unsigned int pulse_thr = pulse_from_time((unsigned int)tick);
 
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++) {
-            unsigned int wr2 = grid[x][y][MID].wave_r2;
+            Cell *c = &grid[x][y][MID];
             uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
 
-            if (wr2 == INF_R2) {
-                /* unvisited */
-            } else if (wr2 == pulse_thr) {
-                pix_r = 255; pix_g = 255; pix_b = 0;  /* shell = yellow */
-            } else {
-                /* shade by distance */
-                int c = 255 - (isqrt((int)wr2) * 4);
-                if (c < 0) c = 0;
-                pix_g = (uint32_t)c;
+            /* dim displacement background */
+            int bg = c->u >> 5;
+            if (bg > 40) bg = 40;
+            if (bg < 0) bg = 0;
+            pix_b = (uint32_t)bg;
+
+            /* cyan = trigger firing this tick */
+            if (sinc_converged) {
+                int next_acc = c->acc + c->sinc_p;
+                if (next_acc >= c->sinc_q && c->sinc_q > 0) {
+                    pix_r = 0; pix_g = 255; pix_b = 255;
+                }
             }
 
-            if (x == MID && y == MID) {
-                pix_r = 0; pix_g = 0; pix_b = 255;  /* center = blue */
+            /* red = persistent fired */
+            if (c->fired) {
+                pix_r = 255; pix_g = 0; pix_b = 0;
             }
 
             SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
