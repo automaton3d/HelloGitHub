@@ -409,9 +409,8 @@ void render_frame(SDL_Renderer *ren) {
     }
 
     /* -------------------------------------------------------
-     * Top-right: trigger + fired only (no wavefront background)
-     * Cyan = Bresenham trigger firing this tick
-     * Red  = persistent fired (trigger + shell coincidence)
+     * Top-right: fired pattern (initially empty, fills as
+     * trigger+wavefront coincidences accumulate)
      * ------------------------------------------------------- */
     {
         int ox = 30 + L + 20 + L + 20;
@@ -421,21 +420,7 @@ void render_frame(SDL_Renderer *ren) {
             Cell *c = &grid[x][y][MID];
             uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
 
-            /* dim displacement background */
-            int bg = c->u >> 5;
-            if (bg > 40) bg = 40;
-            if (bg < 0) bg = 0;
-            pix_b = (uint32_t)bg;
-
-            /* cyan = trigger firing this tick */
-            if (sinc_converged) {
-                int next_acc = c->acc + c->sinc_p;
-                if (next_acc >= c->sinc_q && c->sinc_q > 0) {
-                    pix_r = 0; pix_g = 255; pix_b = 255;
-                }
-            }
-
-            /* red = persistent fired */
+            /* only show cells that have fired (trigger + shell coincidence) */
             if (c->fired) {
                 pix_r = 255; pix_g = 0; pix_b = 0;
             }
