@@ -37,8 +37,8 @@ typedef struct {
     int r2;
     int r;   // precomputed integer radius
     int acc; // accumulator
-    int sinc_p; // numerator   of normalized sinc(r) = sin(r)/r
-    int sinc_q; // denominator of normalized sinc(r) = sin(r)/r
+    int sinc_p; // numerator   of emergent normalized sinc(r)
+    int sinc_q; // denominator of emergent normalized sinc(r)
 } Cell;
 
 Cell grid[L][L][L];
@@ -64,24 +64,6 @@ static int gcd(int a, int b) {
     return a ? a : 1;
 }
 
-#define SINC_SCALE 100000
-
-/* Compute rational sinc(r) = sin(r)/r, normalized so sinc(0) = 1/1.
- * Returns the fraction in lowest terms via *p and *q. */
-static void rational_sinc(int r, int *p, int *q) {
-    if (r == 0) {
-        *p = 1;
-        *q = 1;
-        return;
-    }
-    double val = sin((double)r) / (double)r;
-    int num = (int)(val * SINC_SCALE + (val >= 0 ? 0.5 : -0.5));
-    int den = SINC_SCALE;
-    int g = gcd(num, den);
-    *p = num / g;
-    *q = den / g;
-}
-
 void init() {
     int cx = L/2, cy = L/2, cz = L/2;
     for(int x=0; x<L; x++)
@@ -93,7 +75,8 @@ void init() {
         grid[x][y][z].r  = r;
         grid[x][y][z].u  = 0;
         grid[x][y][z].v  = 0;
-        rational_sinc(r, &grid[x][y][z].sinc_p, &grid[x][y][z].sinc_q);
+        grid[x][y][z].sinc_p = 0;
+        grid[x][y][z].sinc_q = 1;
     }
     grid[cx][cy][cz].u = 2048;
 }
@@ -286,8 +269,40 @@ int main(void) {
         printf("\nReached max ticks (%d) without full convergence.\n",
                MAX_TICKS);
 
+    /* Build the rational sinc in each cell from the emergent profile.
+     * Normalize so that the peak displacement = 1/1. */
+    long u_peak = 0;
+    for (int r = 0; r < RADIUS; r++)
+        if (profile[r] > u_peak) u_peak = profile[r];
+
+    if (u_peak > 0) {
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++)
+        for (int z = 0; z < L; z++) {
+            int num = grid[x][y][z].u;
+            int den = (int)u_peak;
+            int g = gcd(num, den);
+            grid[x][y][z].sinc_p = num / g;
+            grid[x][y][z].sinc_q = den / g;
+        }
+    }
+
     printf("\n--- Final radial profile ---\n");
     print_profile();
+
+    printf("\n--- Emergent sinc rational (r, sinc_p/sinc_q) ---\n");
+    printf("# peak u = %ld\n", u_peak);
+    {
+        int cx = L/2, cy = L/2, cz = L/2;
+        for (int r = 0; r < RADIUS; r++) {
+            /* sample one cell at (cx+r, cy, cz) on the x-axis */
+            int sx = cx + r;
+            if (sx < L)
+                printf("%3d  %d/%d\n", r,
+                       grid[sx][cy][cz].sinc_p,
+                       grid[sx][cy][cz].sinc_q);
+        }
+    }
 
     return 0;
 }
