@@ -37,7 +37,8 @@ typedef struct {
     int r2;
     int r;   // precomputed integer radius
     int acc; // accumulator
-
+    int sinc_p; // numerator   of normalized sinc(r) = sin(r)/r
+    int sinc_q; // denominator of normalized sinc(r) = sin(r)/r
 } Cell;
 
 Cell grid[L][L][L];
@@ -56,16 +57,43 @@ int isqrt(int n) {
     return x;
 }
 
+static int gcd(int a, int b) {
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    while (b) { int t = b; b = a % b; a = t; }
+    return a ? a : 1;
+}
+
+#define SINC_SCALE 100000
+
+/* Compute rational sinc(r) = sin(r)/r, normalized so sinc(0) = 1/1.
+ * Returns the fraction in lowest terms via *p and *q. */
+static void rational_sinc(int r, int *p, int *q) {
+    if (r == 0) {
+        *p = 1;
+        *q = 1;
+        return;
+    }
+    double val = sin((double)r) / (double)r;
+    int num = (int)(val * SINC_SCALE + (val >= 0 ? 0.5 : -0.5));
+    int den = SINC_SCALE;
+    int g = gcd(num, den);
+    *p = num / g;
+    *q = den / g;
+}
+
 void init() {
     int cx = L/2, cy = L/2, cz = L/2;
     for(int x=0; x<L; x++)
     for(int y=0; y<L; y++)
     for(int z=0; z<L; z++) {
         int r2 = (x-cx)*(x-cx) + (y-cy)*(y-cy) + (z-cz)*(z-cz);
+        int r  = isqrt(r2);
         grid[x][y][z].r2 = r2;
-        grid[x][y][z].r  = isqrt(r2);
-        grid[x][y][z].u = 0;
-        grid[x][y][z].v = 0;
+        grid[x][y][z].r  = r;
+        grid[x][y][z].u  = 0;
+        grid[x][y][z].v  = 0;
+        rational_sinc(r, &grid[x][y][z].sinc_p, &grid[x][y][z].sinc_q);
     }
     grid[cx][cy][cz].u = 2048;
 }
@@ -144,6 +172,8 @@ void step() {
         next[x][y][z].v = v_new;
         next[x][y][z].r2 = grid[x][y][z].r2;
         next[x][y][z].r  = r;
+        next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
+        next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
     }
 
     for(int x=0; x<L; x++)
@@ -153,6 +183,8 @@ void step() {
         grid[x][y][z].v = next[x][y][z].v - (next[x][y][z].v >> 12);
         grid[x][y][z].r2 = next[x][y][z].r2;
         grid[x][y][z].r  = next[x][y][z].r;
+        grid[x][y][z].sinc_p = next[x][y][z].sinc_p;
+        grid[x][y][z].sinc_q = next[x][y][z].sinc_q;
     }
 
     tick++;
