@@ -505,28 +505,36 @@ void render_frame(SDL_Renderer *ren) {
             }
         }
 
-        /* find max density for normalization */
-        float max_density = 0;
+        /* smooth with moving average (window = 5 radii) */
+        #define SMOOTH_W 5
+        float smoothed[L];
         for (int r = 0; r < RADIUS; r++) {
-            if (shell_count[r] > 0) {
-                float d = (float)fired_count[r] / (float)shell_count[r];
-                if (d > max_density) max_density = d;
+            float sum = 0;
+            int count = 0;
+            for (int k = r - SMOOTH_W; k <= r + SMOOTH_W; k++) {
+                if (k >= 0 && k < RADIUS && shell_count[k] > 0) {
+                    sum += (float)fired_count[k] / (float)shell_count[k];
+                    count++;
+                }
             }
+            smoothed[r] = (count > 0) ? sum / (float)count : 0;
         }
+
+        /* find max for normalization */
+        float max_density = 0;
+        for (int r = 0; r < RADIUS; r++)
+            if (smoothed[r] > max_density) max_density = smoothed[r];
         if (max_density <= 0) max_density = 1;
 
         SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
         float fpx = -1, fpy = -1;
         for (int r = 0; r < RADIUS; r++) {
-            if (shell_count[r] > 0) {
-                float d = (float)fired_count[r] / (float)shell_count[r];
-                float yf = (float)py0 - (d / max_density) * (float)GRAPH_HEIGHT;
-                float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
-                if (fpx >= 0)
-                    SDL_RenderLine(ren, fpx, fpy, xf, yf);
-                fpx = xf;
-                fpy = yf;
-            }
+            float yf = (float)py0 - (smoothed[r] / max_density) * (float)GRAPH_HEIGHT;
+            float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
+            if (fpx >= 0)
+                SDL_RenderLine(ren, fpx, fpy, xf, yf);
+            fpx = xf;
+            fpy = yf;
         }
     }
 
