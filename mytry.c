@@ -138,9 +138,19 @@ void sinc_step(void) {
 
         /* Bresenham-style accumulator trigger */
         int acc = grid[x][y][z].acc + grid[x][y][z].sinc_p;
+        int triggered = 0;
         if (acc >= grid[x][y][z].sinc_q && grid[x][y][z].sinc_q > 0) {
             acc -= grid[x][y][z].sinc_q;
-            /* TRIGGERED — action to be defined later */
+            triggered = 1;
+        }
+
+        /* Persist: if trigger fires while wavefront shell is present */
+        int fired = grid[x][y][z].fired;
+        if (triggered && grid[x][y][z].wave_r2 != INF_R2) {
+            unsigned int pulse_thr = pulse_from_time((unsigned int)tick);
+            if (grid[x][y][z].wave_r2 == pulse_thr) {
+                fired = 1;
+            }
         }
 
         grid_next[x][y][z].u      = u_new;
@@ -150,6 +160,7 @@ void sinc_step(void) {
         grid_next[x][y][z].acc    = acc;
         grid_next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
         grid_next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
+        grid_next[x][y][z].fired  = fired;
     }
 
     /* copy back with global damping */
@@ -163,6 +174,7 @@ void sinc_step(void) {
         grid[x][y][z].acc    = grid_next[x][y][z].acc;
         grid[x][y][z].sinc_p = grid_next[x][y][z].sinc_p;
         grid[x][y][z].sinc_q = grid_next[x][y][z].sinc_q;
+        grid[x][y][z].fired  = grid_next[x][y][z].fired;
     }
 }
 
@@ -243,11 +255,16 @@ void pulse_step(void) {
     pulse_update_wavefront();
     grid_next[MID][MID][MID].wave_r2 = 0;
 
-    /* copy wave_r2 back */
+    /* copy wave_r2 back; clear fired for cells at the new shell position
+     * (will be recalculated by the next sinc_step trigger coincidence) */
+    unsigned int new_thr = pulse_from_time((unsigned int)(tick + 1));
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
-    for (int z = 0; z < L; z++)
+    for (int z = 0; z < L; z++) {
         grid[x][y][z].wave_r2 = grid_next[x][y][z].wave_r2;
+        if (grid[x][y][z].wave_r2 == new_thr)
+            grid[x][y][z].fired = 0;  /* reset — will be recalculated */
+    }
 }
 
 /* ==========================================================
@@ -349,30 +366,45 @@ void render_frame(SDL_Renderer *ren) {
     }
 
     /* -------------------------------------------------------
-     * Top-middle: trigger cloud slice (z = MID)
+     * Top-middle: trigger + wavefront combined (z = MID)
+     * Shows: green=distance, yellow=shell, cyan=trigger, red=fired
      * ------------------------------------------------------- */
     {
         int ox = 30 + L + 20;
-        if (sinc_converged) {
-            for (int x = 0; x < L; x++)
-            for (int y = 0; y < L; y++) {
-                int cz = MID;
-                int acc = grid[x][y][cz].acc + grid[x][y][cz].sinc_p;
-                if (acc >= grid[x][y][cz].sinc_q && grid[x][y][cz].sinc_q > 0) {
-                    SDL_SetRenderDrawColor(ren, 0, 255, 255, 255);
-                } else {
-                    int c = grid[x][y][cz].u >> 5;
-                    if (c > 60) c = 60;
-                    if (c < 0) c = 0;
-                    SDL_SetRenderDrawColor(ren, 0, 0, (Uint8)c, 255);
-                }
-                SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
+        unsigned int pulse_thr = pulse_from_time((unsigned int)tick);
+
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++) {
+            Cell *c = &grid[x][y][MID];
+            uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
+
+            /* layer 1: wavefront distance (green gradient) */
+            if (c->wave_r2 != INF_R2) {
+                int g = 255 - (isqrt((int)c->wave_r2) << 2);
+                if (g < 0) g = 0;
+                pix_g = (uint32_t)g;
             }
-        } else {
-            SDL_SetRenderDrawColor(ren, 30, 30, 30, 255);
-            for (int x = 0; x < L; x++)
-            for (int y = 0; y < L; y++)
-                SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
+
+            /* layer 2: wavefront shell (yellow ring) */
+            if (c->wave_r2 == pulse_thr) {
+                pix_r = 255; pix_g = 255; pix_b = 0;
+            }
+
+            /* layer 3: trigger cloud (cyan dots where Bresenham fires this tick) */
+            if (sinc_converged) {
+                int next_acc = c->acc + c->sinc_p;
+                if (next_acc >= c->sinc_q && c->sinc_q > 0) {
+                    pix_r = 0; pix_g = 255; pix_b = 255;
+                }
+            }
+
+            /* layer 4: persistent fired cells (red — trigger+wavefront coincided) */
+            if (c->fired) {
+                pix_r = 255; pix_g = 0; pix_b = 0;
+            }
+
+            SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
+            SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
         }
     }
 

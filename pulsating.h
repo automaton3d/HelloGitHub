@@ -43,6 +43,8 @@ typedef struct {
     int r2;             /* Euclidean distance squared (true geometry) */
     /* pulsating wavefront CA */
     unsigned int wave_r2;  /* wavefront distance² (INF_R2 = unvisited) */
+    /* trigger + wavefront coincidence (persistent, recalculated on next sweep) */
+    int fired;          /* 1 = triggered while wavefront shell was present */
 } Cell;
 
 /* --- Grid pointers (heap-allocated due to size) --- */
