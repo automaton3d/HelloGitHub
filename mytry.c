@@ -15,7 +15,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 #define L 101
 #define WINDOW_W 1850
@@ -46,30 +45,46 @@ Cell next[L][L][L];
 
 int tick = 0;
 
+/* Integer square root — shift-only, no division, no multiplication */
 int isqrt(int n) {
-    if(n <= 0) return 0;
-    int x = n;
-    int y = (x + 1) >> 1;
-    while(y < x) {
-        x = y;
-        y = (x + n / x) >> 1;
+    if (n <= 0) return 0;
+    int result = 0;
+    int bit = 1 << 30;
+    while (bit > n) bit >>= 2;
+    while (bit != 0) {
+        if (n >= result + bit) {
+            n -= result + bit;
+            result = (result >> 1) + bit;
+        } else {
+            result >>= 1;
+        }
+        bit >>= 2;
     }
-    return x;
-}
-
-static int gcd(int a, int b) {
-    if (a < 0) a = -a;
-    if (b < 0) b = -b;
-    while (b) { int t = b; b = a % b; a = t; }
-    return a ? a : 1;
+    return result;
 }
 
 void init() {
     int cx = L/2, cy = L/2, cz = L/2;
+    /* Incremental squares: dx² computed without multiply.
+     * (d+1)² = d² + (d << 1) + 1  */
+    int dx2_table[L];
+    for (int i = 0; i < L; i++) {
+        int d = i - cx;
+        /* compute d² by repeated addition */
+        int absd = d < 0 ? -d : d;
+        int sq = 0;
+        int odd = 1;
+        for (int k = 0; k < absd; k++) {
+            sq += odd;
+            odd += 2;
+        }
+        dx2_table[i] = sq;
+    }
+
     for(int x=0; x<L; x++)
     for(int y=0; y<L; y++)
     for(int z=0; z<L; z++) {
-        int r2 = (x-cx)*(x-cx) + (y-cy)*(y-cy) + (z-cz)*(z-cz);
+        int r2 = dx2_table[x] + dx2_table[y] + dx2_table[z];
         int r  = isqrt(r2);
         grid[x][y][z].r2 = r2;
         grid[x][y][z].r  = r;
@@ -279,7 +294,7 @@ int main(void) {
                MAX_TICKS);
 
     /* Build the rational sinc in each cell from the emergent profile.
-     * Normalize so that the peak displacement = 1/1. */
+     * sinc_p/sinc_q = u / u_peak (unreduced — Bresenham works without GCD) */
     long u_peak = 0;
     for (int r = 0; r < RADIUS; r++)
         if (profile[r] > u_peak) u_peak = profile[r];
@@ -288,11 +303,8 @@ int main(void) {
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++)
         for (int z = 0; z < L; z++) {
-            int num = grid[x][y][z].u;
-            int den = (int)u_peak;
-            int g = gcd(num, den);
-            grid[x][y][z].sinc_p = num / g;
-            grid[x][y][z].sinc_q = den / g;
+            grid[x][y][z].sinc_p = grid[x][y][z].u;
+            grid[x][y][z].sinc_q = (int)u_peak;
         }
     }
 
