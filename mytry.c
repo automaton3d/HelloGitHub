@@ -151,10 +151,18 @@ void step() {
 
         if(u_new < 0) u_new = 0;
 
+        /* Bresenham-style accumulator: triggers when acc >= sinc_q */
+        int acc = grid[x][y][z].acc + grid[x][y][z].sinc_p;
+        if (acc >= grid[x][y][z].sinc_q && grid[x][y][z].sinc_q > 0) {
+            acc -= grid[x][y][z].sinc_q;
+            /* TRIGGERED — action to be defined later */
+        }
+
         next[x][y][z].u = u_new;
         next[x][y][z].v = v_new;
         next[x][y][z].r2 = grid[x][y][z].r2;
         next[x][y][z].r  = r;
+        next[x][y][z].acc = acc;
         next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
         next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
     }
@@ -166,6 +174,7 @@ void step() {
         grid[x][y][z].v = next[x][y][z].v - (next[x][y][z].v >> 12);
         grid[x][y][z].r2 = next[x][y][z].r2;
         grid[x][y][z].r  = next[x][y][z].r;
+        grid[x][y][z].acc = next[x][y][z].acc;
         grid[x][y][z].sinc_p = next[x][y][z].sinc_p;
         grid[x][y][z].sinc_q = next[x][y][z].sinc_q;
     }
@@ -295,10 +304,50 @@ int main(void) {
     {
         int cx = L/2, cy = L/2, cz = L/2;
         for (int r = 0; r < RADIUS; r++) {
-            /* sample one cell at (cx+r, cy, cz) on the x-axis */
             int sx = cx + r;
             if (sx < L)
                 printf("%3d  %d/%d\n", r,
+                       grid[sx][cy][cz].sinc_p,
+                       grid[sx][cy][cz].sinc_q);
+        }
+    }
+
+    /* --- Phase 2: run with Bresenham triggers active --- */
+    #define TRIGGER_TICKS 50
+    printf("\n--- Phase 2: Bresenham trigger demo (%d ticks) ---\n",
+           TRIGGER_TICKS);
+    printf("# Each cell triggers at rate sinc_p/sinc_q per tick\n");
+
+    /* reset accumulators */
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++)
+        grid[x][y][z].acc = 0;
+
+    /* count triggers per radius over TRIGGER_TICKS steps */
+    static long triggers[L];
+    for (int i = 0; i < L; i++) triggers[i] = 0;
+
+    for (int t = 0; t < TRIGGER_TICKS; t++) {
+        for (int x = 1; x < L-1; x++)
+        for (int y = 1; y < L-1; y++)
+        for (int z = 1; z < L-1; z++) {
+            int acc = grid[x][y][z].acc + grid[x][y][z].sinc_p;
+            if (acc >= grid[x][y][z].sinc_q && grid[x][y][z].sinc_q > 0) {
+                acc -= grid[x][y][z].sinc_q;
+                triggers[grid[x][y][z].r]++;
+            }
+            grid[x][y][z].acc = acc;
+        }
+    }
+
+    printf("  r  triggers/%d  expected_rate(p/q)\n", TRIGGER_TICKS);
+    {
+        int cx = L/2, cy = L/2, cz = L/2;
+        for (int r = 0; r < RADIUS; r++) {
+            int sx = cx + r;
+            if (sx < L && count[r] > 0)
+                printf("%3d  %7ld      %d/%d\n", r, triggers[r],
                        grid[sx][cy][cz].sinc_p,
                        grid[sx][cy][cz].sinc_q);
         }
