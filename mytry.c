@@ -487,6 +487,49 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
+    /* red: radial profile of fired (stored AND result) */
+    {
+        int fired_count[L];
+        int shell_count[L];
+        memset(fired_count, 0, sizeof(fired_count));
+        memset(shell_count, 0, sizeof(shell_count));
+
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++)
+        for (int z = 0; z < L; z++) {
+            int r = grid[x][y][z].r;
+            if (r < L) {
+                shell_count[r]++;
+                if (grid[x][y][z].fired)
+                    fired_count[r]++;
+            }
+        }
+
+        /* find max density for normalization */
+        float max_density = 0;
+        for (int r = 0; r < RADIUS; r++) {
+            if (shell_count[r] > 0) {
+                float d = (float)fired_count[r] / (float)shell_count[r];
+                if (d > max_density) max_density = d;
+            }
+        }
+        if (max_density <= 0) max_density = 1;
+
+        SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
+        float fpx = -1, fpy = -1;
+        for (int r = 0; r < RADIUS; r++) {
+            if (shell_count[r] > 0) {
+                float d = (float)fired_count[r] / (float)shell_count[r];
+                float yf = (float)py0 - (d / max_density) * (float)GRAPH_HEIGHT;
+                float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
+                if (fpx >= 0)
+                    SDL_RenderLine(ren, fpx, fpy, xf, yf);
+                fpx = xf;
+                fpy = yf;
+            }
+        }
+    }
+
     printf("\r[tick %4d] peak=%d stable=%d converged=%d  ",
            tick, peak, sinc_stable_frames, sinc_converged);
     fflush(stdout);
