@@ -363,13 +363,21 @@ void render_frame(SDL_Renderer *ren) {
     peak_idx = (peak_idx + 1) % PEAK_HIST_W;
 
     /* -------------------------------------------------------
-     * Top-left: sinc displacement slice (z = MID)
+     * Top-left: sinc displacement slice (z = MID), normalized
      * ------------------------------------------------------- */
     {
         int cz = MID;
+        /* find max displacement in this slice for normalization */
+        int slice_max = 1;
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++) {
-            int c = grid[x][y][cz].u >> 3;
+            int val = grid[x][y][cz].u;
+            if (val > slice_max) slice_max = val;
+        }
+
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++) {
+            int c = (grid[x][y][cz].u * 255) / slice_max;
             if (c > 255) c = 255;
             if (c < 0) c = 0;
             SDL_SetRenderDrawColor(ren, (Uint8)c, (Uint8)c, (Uint8)c, 255);
