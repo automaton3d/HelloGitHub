@@ -390,8 +390,8 @@ void render_frame(SDL_Renderer *ren) {
                 pix_r = 255; pix_g = 255; pix_b = 0;
             }
 
-            /* layer 3: trigger cloud (cyan dots where Bresenham fires this tick) */
-            if (sinc_converged) {
+            /* layer 3: trigger only on the shell (cyan where Bresenham fires ON the shell) */
+            if (sinc_converged && c->wave_r2 == pulse_thr) {
                 int next_acc = c->acc + c->sinc_p;
                 if (next_acc >= c->sinc_q && c->sinc_q > 0) {
                     pix_r = 0; pix_g = 255; pix_b = 255;
