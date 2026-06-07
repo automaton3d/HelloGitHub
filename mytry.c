@@ -13,6 +13,7 @@
 #define MYTRY
 #ifdef MYTRY
 
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -198,17 +199,25 @@ void step() {
 }
 
 /* ------------------------------------------------------------------ */
-/* main() – run the CA, print radial profile, detect stability        */
+/* Rendering with SDL3                                                */
 /* ------------------------------------------------------------------ */
 
 #define MAX_TICKS    2000
 #define PRINT_EVERY  100
+#define PEAK_HIST_W  600
 
-static long profile[L];       /* radial average of u at each integer r */
-static long prev_profile[L];  /* previous frame for stability check    */
-static int  count[L];         /* number of cells at each radius        */
+static long profile[L];
+static long prev_profile[L];
+static int  count[L];
+static int  peak_history[PEAK_HIST_W];
+static int  peak_idx = 0;
+static int  stable_frames = 0;
+static int  converged = 0;
+static long u_peak = 0;
 
-/* Compute the radially averaged displacement profile */
+/* triggered[x][y] = 1 if any cell at (x,y,L/2) triggered this tick */
+static int triggered_slice[L][L];
+
 static void compute_profile(void) {
     for (int i = 0; i < L; i++) {
         prev_profile[i] = profile[i];
@@ -230,7 +239,6 @@ static void compute_profile(void) {
     }
 }
 
-/* Return max absolute change between current and previous profile */
 static long profile_max_change(void) {
     long maxd = 0;
     for (int i = 0; i < RADIUS; i++) {
@@ -241,130 +249,205 @@ static long profile_max_change(void) {
     return maxd;
 }
 
-/* Print a compact radial profile table to stdout */
-static void print_profile(void) {
-    printf("# tick=%d  radial profile (r, avg_u)\n", tick);
-    for (int r = 0; r < RADIUS; r++) {
-        if (count[r] > 0)
-            printf("%3d  %7ld\n", r, profile[r]);
+/* Compute trigger slice at z=L/2 for this tick */
+static void compute_trigger_slice(void) {
+    int cz = L/2;
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++) {
+        int acc = grid[x][y][cz].acc + grid[x][y][cz].sinc_p;
+        if (acc >= grid[x][y][cz].sinc_q && grid[x][y][cz].sinc_q > 0) {
+            triggered_slice[x][y] = 1;
+        } else {
+            triggered_slice[x][y] = 0;
+        }
     }
-    printf("\n");
 }
 
-/* Print a single-line status summary */
-static void print_status(long max_change) {
-    printf("[tick %4d]  u(0)=%7ld  u(shell=%d)=%7ld  max_delta=%ld\n",
-           tick, profile[0], SHELL_R, profile[SHELL_R], max_change);
+static void render(SDL_Renderer *renderer) {
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+    compute_profile();
+    long max_change = profile_max_change();
+
+    if (!converged) {
+        if (max_change < STABILITY_THRESHOLD) stable_frames++;
+        else stable_frames = 0;
+        if (stable_frames >= STABILITY_FRAMES) {
+            converged = 1;
+            /* set rationals from emergent profile */
+            u_peak = 0;
+            for (int r = 0; r < RADIUS; r++)
+                if (profile[r] > u_peak) u_peak = profile[r];
+            if (u_peak > 0) {
+                for (int x = 0; x < L; x++)
+                for (int y = 0; y < L; y++)
+                for (int z = 0; z < L; z++) {
+                    grid[x][y][z].sinc_p = grid[x][y][z].u;
+                    grid[x][y][z].sinc_q = (int)u_peak;
+                    grid[x][y][z].acc = 0;
+                }
+            }
+            printf("Converged at tick %d — triggers active.\n", tick);
+        }
+    }
+
+    /* peak value */
+    int peak = 1;
+    for (int r = 0; r < RADIUS; r++) {
+        if (count[r] > 0 && profile[r] > peak)
+            peak = (int)profile[r];
+    }
+    peak_history[peak_idx] = peak;
+    peak_idx = (peak_idx + 1) % PEAK_HIST_W;
+
+    /* --- 1) 2D displacement slice (top-left) --- */
+    {
+        int cz = L/2;
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++) {
+            int c = grid[x][y][cz].u >> 3;
+            if (c > 255) c = 255;
+            if (c < 0) c = 0;
+            SDL_SetRenderDrawColor(renderer, (Uint8)c, (Uint8)c, (Uint8)c, 255);
+            SDL_RenderPoint(renderer, (float)(x + 50), (float)(y + 20));
+        }
+    }
+
+    /* --- 2) Trigger cloud slice (top-right) --- */
+    if (converged) {
+        compute_trigger_slice();
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++) {
+            if (triggered_slice[x][y]) {
+                SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255);
+            } else {
+                int c = grid[x][y][L/2].u >> 5;
+                if (c > 80) c = 80;
+                SDL_SetRenderDrawColor(renderer, 0, 0, (Uint8)c, 255);
+            }
+            SDL_RenderPoint(renderer, (float)(x + 200 + L), (float)(y + 20));
+        }
+    } else {
+        /* before convergence, show "waiting" */
+        SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++)
+            SDL_RenderPoint(renderer, (float)(x + 200 + L), (float)(y + 20));
+    }
+
+    /* --- Graph area (bottom half) --- */
+    int px0 = 100;
+    int py0 = WINDOW_H - 50;
+    int graph_w = RADIUS * GRAPH_SCALE_X;
+
+    /* axis */
+    SDL_SetRenderDrawColor(renderer, 80, 80, 80, 255);
+    SDL_RenderLine(renderer, (float)px0, (float)py0,
+                   (float)(px0 + graph_w), (float)py0);
+
+    /* --- 3a) Green: emergent sinc(r) profile --- */
+    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+    {
+        float gpx = -1, gpy = -1;
+        for (int r = 0; r < RADIUS; r++) {
+            if (count[r] > 0) {
+                int avg = (int)profile[r];
+                float yf = (float)py0 - ((float)avg * GRAPH_HEIGHT) / (float)peak;
+                float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
+                if (gpx >= 0)
+                    SDL_RenderLine(renderer, gpx, gpy, xf, yf);
+                gpx = xf;
+                gpy = yf;
+            }
+        }
+    }
+
+    /* --- 3b) Yellow: peak history --- */
+    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    {
+        int max_val = 1;
+        for (int i = 0; i < PEAK_HIST_W; i++)
+            if (peak_history[i] > max_val) max_val = peak_history[i];
+        max_val += (max_val >> 3);
+
+        float last_x = -1, last_y = -1;
+        for (int i = 0; i < PEAK_HIST_W; i++) {
+            int val = peak_history[i];
+            if (val == 0) continue;
+            float xf = (float)px0 + ((float)i * (float)graph_w) / (float)PEAK_HIST_W;
+            float yf = (float)py0 - ((float)val * (float)GRAPH_HEIGHT) / (float)max_val;
+            if (i == peak_idx) last_x = -1;
+            if (last_x >= 0)
+                SDL_RenderLine(renderer, last_x, last_y, xf, yf);
+            last_x = xf;
+            last_y = yf;
+        }
+    }
+
+    /* --- 3c) Cyan: trigger rate per radius (after convergence) --- */
+    if (converged) {
+        SDL_SetRenderDrawColor(renderer, 0, 200, 255, 255);
+        float cpx = -1, cpy = -1;
+        for (int r = 0; r < RADIUS; r++) {
+            /* trigger rate = sinc_p / sinc_q, draw normalized to 1 at peak */
+            long sp = profile[r];  /* sinc_p == u at convergence */
+            float rate = (u_peak > 0) ? (float)sp / (float)u_peak : 0;
+            float yf = (float)py0 - rate * (float)GRAPH_HEIGHT;
+            float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
+            if (cpx >= 0)
+                SDL_RenderLine(renderer, cpx, cpy, xf, yf);
+            cpx = xf;
+            cpy = yf;
+        }
+    }
+
+    printf("\r[tick %4d] peak=%d stable=%d converged=%d  ",
+           tick, peak, stable_frames, converged);
+    fflush(stdout);
+
+    SDL_RenderPresent(renderer);
 }
 
 int main(void) {
-    int stable_count = 0;
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        printf("SDL_Init error: %s\n", SDL_GetError());
+        return 1;
+    }
 
-    printf("mytry CA — 3-D spherical sinc wave\n");
-    printf("Grid: %dx%dx%d  Radius: %d  Shell: r=%d±%d  Target: %d\n",
-           L, L, L, RADIUS, SHELL_R, SHELL_W, SHELL_TARGET);
-    printf("Running up to %d ticks (stability: delta<%d for %d frames)\n\n",
-           MAX_TICKS, STABILITY_THRESHOLD, STABILITY_FRAMES);
+    SDL_Window *window = SDL_CreateWindow(
+        "mytry CA — sinc(r) + triggers", WINDOW_W, WINDOW_H, 0);
+    if (!window) {
+        printf("Window error: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
+    if (!renderer) {
+        printf("Renderer error: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
     init();
 
-    for (int t = 0; t < MAX_TICKS; t++) {
+    int running = 1;
+    while (running) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_EVENT_QUIT) running = 0;
+        }
+
         step();
-        compute_profile();
-
-        long max_change = profile_max_change();
-
-        if (max_change < STABILITY_THRESHOLD)
-            stable_count++;
-        else
-            stable_count = 0;
-
-        if ((tick % PRINT_EVERY) == 0)
-            print_status(max_change);
-
-        if (stable_count >= STABILITY_FRAMES) {
-            printf("\nConverged at tick %d (stable for %d frames).\n",
-                   tick, STABILITY_FRAMES);
-            break;
-        }
+        render(renderer);
+        SDL_Delay(16);
     }
 
-    if (stable_count < STABILITY_FRAMES)
-        printf("\nReached max ticks (%d) without full convergence.\n",
-               MAX_TICKS);
-
-    /* Build the rational sinc in each cell from the emergent profile.
-     * sinc_p/sinc_q = u / u_peak (unreduced — Bresenham works without GCD) */
-    long u_peak = 0;
-    for (int r = 0; r < RADIUS; r++)
-        if (profile[r] > u_peak) u_peak = profile[r];
-
-    if (u_peak > 0) {
-        for (int x = 0; x < L; x++)
-        for (int y = 0; y < L; y++)
-        for (int z = 0; z < L; z++) {
-            grid[x][y][z].sinc_p = grid[x][y][z].u;
-            grid[x][y][z].sinc_q = (int)u_peak;
-        }
-    }
-
-    printf("\n--- Final radial profile ---\n");
-    print_profile();
-
-    printf("\n--- Emergent sinc rational (r, sinc_p/sinc_q) ---\n");
-    printf("# peak u = %ld\n", u_peak);
-    {
-        int cx = L/2, cy = L/2, cz = L/2;
-        for (int r = 0; r < RADIUS; r++) {
-            int sx = cx + r;
-            if (sx < L)
-                printf("%3d  %d/%d\n", r,
-                       grid[sx][cy][cz].sinc_p,
-                       grid[sx][cy][cz].sinc_q);
-        }
-    }
-
-    /* --- Phase 2: run with Bresenham triggers active --- */
-    #define TRIGGER_TICKS 50
-    printf("\n--- Phase 2: Bresenham trigger demo (%d ticks) ---\n",
-           TRIGGER_TICKS);
-    printf("# Each cell triggers at rate sinc_p/sinc_q per tick\n");
-
-    /* reset accumulators */
-    for (int x = 0; x < L; x++)
-    for (int y = 0; y < L; y++)
-    for (int z = 0; z < L; z++)
-        grid[x][y][z].acc = 0;
-
-    /* count triggers per radius over TRIGGER_TICKS steps */
-    static long triggers[L];
-    for (int i = 0; i < L; i++) triggers[i] = 0;
-
-    for (int t = 0; t < TRIGGER_TICKS; t++) {
-        for (int x = 1; x < L-1; x++)
-        for (int y = 1; y < L-1; y++)
-        for (int z = 1; z < L-1; z++) {
-            int acc = grid[x][y][z].acc + grid[x][y][z].sinc_p;
-            if (acc >= grid[x][y][z].sinc_q && grid[x][y][z].sinc_q > 0) {
-                acc -= grid[x][y][z].sinc_q;
-                triggers[grid[x][y][z].r]++;
-            }
-            grid[x][y][z].acc = acc;
-        }
-    }
-
-    printf("  r  triggers/%d  expected_rate(p/q)\n", TRIGGER_TICKS);
-    {
-        int cx = L/2, cy = L/2, cz = L/2;
-        for (int r = 0; r < RADIUS; r++) {
-            int sx = cx + r;
-            if (sx < L && count[r] > 0)
-                printf("%3d  %7ld      %d/%d\n", r, triggers[r],
-                       grid[sx][cy][cz].sinc_p,
-                       grid[sx][cy][cz].sinc_q);
-        }
-    }
-
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 0;
 }
 
