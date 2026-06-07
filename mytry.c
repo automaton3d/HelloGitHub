@@ -251,20 +251,32 @@ static void pulse_update_wavefront(void) {
     }
 }
 
+static unsigned int prev_pulse_thr = 0;
+static int pulse_direction = 1;  /* 1 = expanding, -1 = contracting */
+
 void pulse_step(void) {
     pulse_update_wavefront();
     grid_next[MID][MID][MID].wave_r2 = 0;
 
-    /* copy wave_r2 back; clear fired for cells at the new shell position
-     * (will be recalculated by the next sinc_step trigger coincidence) */
-    unsigned int new_thr = pulse_from_time((unsigned int)(tick + 1));
+    /* detect sweep reversal → clear all fired (start fresh disk) */
+    unsigned int cur_thr = pulse_from_time((unsigned int)tick);
+    unsigned int next_thr = pulse_from_time((unsigned int)(tick + 1));
+    int new_dir = (next_thr >= cur_thr) ? 1 : -1;
+    if (new_dir != pulse_direction) {
+        /* direction changed — clear entire grid's fired state */
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++)
+        for (int z = 0; z < L; z++)
+            grid[x][y][z].fired = 0;
+        pulse_direction = new_dir;
+    }
+    prev_pulse_thr = cur_thr;
+
+    /* copy wave_r2 back */
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
-    for (int z = 0; z < L; z++) {
+    for (int z = 0; z < L; z++)
         grid[x][y][z].wave_r2 = grid_next[x][y][z].wave_r2;
-        if (grid[x][y][z].wave_r2 == new_thr)
-            grid[x][y][z].fired = 0;  /* reset — will be recalculated */
-    }
 }
 
 /* ==========================================================
