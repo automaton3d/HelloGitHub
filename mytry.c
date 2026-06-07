@@ -402,10 +402,7 @@ void render_frame(SDL_Renderer *ren) {
                 pix_r = 255; pix_g = 255; pix_b = 0;
             }
 
-            /* layer 3: AND result — persistent fired (trigger AND shell coincided) */
-            if (c->fired) {
-                pix_r = 255; pix_g = 0; pix_b = 0;
-            }
+
 
             SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
             SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
