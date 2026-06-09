@@ -444,21 +444,13 @@ void render_frame(SDL_Renderer *ren) {
                 pix_g = (uint32_t)g;
             }
 
-            /* layer 2: wavefront shell (yellow band) */
+            /* layer 2: wavefront shell (yellow ring, tight visual band) */
             {
                 int delta = (int)c->wave_r2 - (int)pulse_thr;
                 if (delta < 0) delta = -delta;
-                if (delta <= PULSE_TOLERANCE) {
+                if (delta <= 3) {
                     pix_r = 255; pix_g = 255; pix_b = 0;
                 }
-            }
-
-            /* layer 3: TTL persistence (red/orange overlay) */
-            if (c->ttl > 0) {
-                uint32_t bright = c->ttl;
-                if (bright > pix_r) pix_r = bright;
-                if ((bright >> 1) > pix_g) pix_g = bright >> 1;
-                pix_b = 0;
             }
 
             SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
