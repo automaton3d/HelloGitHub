@@ -198,6 +198,7 @@ void sinc_step(void)
         grid_next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
         grid_next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
         grid_next[x][y][z].ttl    = ttl;
+        grid_next[x][y][z].trig   = (unsigned char)triggered;
     }
 
     /* copy back with global damping */
@@ -220,6 +221,7 @@ void sinc_step(void)
         grid[x][y][z].sinc_p = grid_next[x][y][z].sinc_p;
         grid[x][y][z].sinc_q = grid_next[x][y][z].sinc_q;
         grid[x][y][z].ttl    = grid_next[x][y][z].ttl;
+        grid[x][y][z].trig   = grid_next[x][y][z].trig;
     }
 }
 
@@ -485,6 +487,37 @@ void render_frame(SDL_Renderer *ren) {
                 (float)(y + 10));
         }
     }
+    /* -------------------------------------------------------
+     * Top-far-right: triggering cut (z = MID)
+     * Shows cyan dot where Bresenham triggered this tick
+     * ------------------------------------------------------- */
+    {
+        int ox = 30 + L + 20 + L + 20 + L + 20;
+
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++) {
+            Cell *c = &grid[x][y][MID];
+
+            uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
+
+            if (c->trig) {
+                pix_r = 0; pix_g = 255; pix_b = 255;
+            }
+
+            SDL_SetRenderDrawColor(
+                ren,
+                (Uint8)pix_r,
+                (Uint8)pix_g,
+                (Uint8)pix_b,
+                255);
+
+            SDL_RenderPoint(
+                ren,
+                (float)(x + ox),
+                (float)(y + 10));
+        }
+    }
+
     /* -------------------------------------------------------
      * Bottom: sinc(r) profile graph
      * ------------------------------------------------------- */

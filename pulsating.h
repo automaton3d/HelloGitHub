@@ -46,6 +46,7 @@ typedef struct {
     unsigned int wave_r2;  /* wavefront distance² (INF_R2 = unvisited) */
     /* trigger + wavefront coincidence (persistent, recalculated on next sweep) */
     unsigned char ttl;
+    unsigned char trig;    /* 1 if Bresenham triggered this tick, else 0 */
 
 } Cell;
 
