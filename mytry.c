@@ -583,14 +583,11 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
-    /* red: radial profile of fired (stored AND result) */
-    /* red: radial profile of TTL density */
+    /* red: radial profile of total TTL per shell (AND of trigger × geometry) */
     {
         long ttl_sum[L];
-        int shell_count[L];
 
         memset(ttl_sum, 0, sizeof(ttl_sum));
-        memset(shell_count, 0, sizeof(shell_count));
 
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++)
@@ -598,7 +595,6 @@ void render_frame(SDL_Renderer *ren) {
             int r = grid[x][y][z].r;
 
             if (r < L) {
-                shell_count[r]++;
                 ttl_sum[r] += grid[x][y][z].ttl;
             }
         }
@@ -615,14 +611,9 @@ void render_frame(SDL_Renderer *ren) {
                      k <= r + SMOOTH_W;
                      k++)
             {
-                if (k >= 0 &&
-                    k < RADIUS &&
-                    shell_count[k] > 0)
+                if (k >= 0 && k < RADIUS)
                 {
-                    sum +=
-                        ((float)ttl_sum[k]) /
-                        (64.0f * (float)shell_count[k]);
-
+                    sum += (float)ttl_sum[k];
                     count++;
                 }
             }
