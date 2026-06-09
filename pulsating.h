@@ -40,8 +40,8 @@ typedef struct {
     int sinc_p;         /* emergent sinc numerator */
     int sinc_q;         /* emergent sinc denominator */
     /* shared geometry */
-    int r;              /* integer radius from center */
-    int r2;             /* Euclidean distance squared (true geometry) */
+    int r;              /* integer radius from center (filled by wavefront) */
+    int r2;             /* Euclidean distance squared  (filled by wavefront) */
     /* pulsating wavefront CA */
     unsigned int wave_r2;  /* wavefront distance² (INF_R2 = unvisited) */
     /* trigger + wavefront coincidence (persistent, recalculated on next sweep) */
@@ -58,12 +58,11 @@ extern const int MID;
 extern const int R_MAX;
 extern int tick;
 
-/* --- Sinc wave CA --- */
-void sinc_init(void);
-void sinc_step(void);
+/* --- Unified init (sinc + wavefront) --- */
+void init(void);
 
-/* --- Pulsating wavefront CA --- */
-void pulse_init(void);
+/* --- Per-tick updates --- */
+void sinc_step(void);
 void pulse_step(void);
 unsigned int pulse_from_time(unsigned int t);
 

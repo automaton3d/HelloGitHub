@@ -50,37 +50,34 @@ static int isqrt(int n) {
 }
 
 /* ==========================================================
- * Sinc wave CA — initialization
+ * Unified initialization (sinc wave + pulsating wavefront)
+ *
+ * r2 and r are NO LONGER precomputed here.  They are filled
+ * dynamically by the wavefront BFS (sum-of-odds) inside
+ * pulse_step().  Until the wavefront reaches a cell its
+ * r = r2 = 0, which is harmless because the sinc wave
+ * has not arrived there yet either.
  * ========================================================== */
-void sinc_init(void) {
+void init(void) {
     int cx = L/2, cy = L/2, cz = L/2;
-
-    /* Incremental squares: d² via sum of odds (no multiply) */
-    int dx2_table[L];
-    for (int i = 0; i < L; i++) {
-        int d = i - cx;
-        int absd = d < 0 ? -d : d;
-        int sq = 0, odd = 1;
-        for (int k = 0; k < absd; k++) {
-            sq += odd;
-            odd += 2;
-        }
-        dx2_table[i] = sq;
-    }
 
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++) {
         Cell *c = &grid[x][y][z];
-        c->r2   = dx2_table[x] + dx2_table[y] + dx2_table[z];
-        c->r    = isqrt(c->r2);
-        c->u    = 0;
-        c->v    = 0;
-        c->acc  = 0;
-        c->sinc_p = 0;
-        c->sinc_q = 1;
+        c->u       = 0;
+        c->v       = 0;
+        c->acc     = 0;
+        c->sinc_p  = 0;
+        c->sinc_q  = 1;
+        c->r       = 0;
+        c->r2      = 0;
+        c->wave_r2 = INF_R2;
+        c->ttl     = 0;
+        c->trig    = 0;
     }
-    grid[cx][cy][cz].u = 2048;
+    grid[cx][cy][cz].u       = 2048;
+    grid[cx][cy][cz].wave_r2 = 0;
 }
 
 /* ==========================================================
@@ -192,8 +189,6 @@ void sinc_step(void)
 
         grid_next[x][y][z].u      = u_new;
         grid_next[x][y][z].v      = v_new;
-        grid_next[x][y][z].r2     = grid[x][y][z].r2;
-        grid_next[x][y][z].r      = r;
         grid_next[x][y][z].acc    = acc;
         grid_next[x][y][z].sinc_p = grid[x][y][z].sinc_p;
         grid_next[x][y][z].sinc_q = grid[x][y][z].sinc_q;
@@ -215,26 +210,12 @@ void sinc_step(void)
             grid_next[x][y][z].v -
             (grid_next[x][y][z].v >> 12);
 
-        grid[x][y][z].r2     = grid_next[x][y][z].r2;
-        grid[x][y][z].r      = grid_next[x][y][z].r;
         grid[x][y][z].acc    = grid_next[x][y][z].acc;
         grid[x][y][z].sinc_p = grid_next[x][y][z].sinc_p;
         grid[x][y][z].sinc_q = grid_next[x][y][z].sinc_q;
         grid[x][y][z].ttl    = grid_next[x][y][z].ttl;
         grid[x][y][z].trig   = grid_next[x][y][z].trig;
     }
-}
-
-/* ==========================================================
- * Pulsating wavefront CA — initialization
- * ========================================================== */
-void pulse_init(void) {
-    for (int x = 0; x < L; x++)
-    for (int y = 0; y < L; y++)
-    for (int z = 0; z < L; z++) {
-        grid[x][y][z].wave_r2 = INF_R2;
-    }
-    grid[MID][MID][MID].wave_r2 = 0;
 }
 
 /* ==========================================================
@@ -313,11 +294,18 @@ void pulse_step(void) {
         pulse_direction = new_dir;
     }    prev_pulse_thr = cur_thr;
 
-    /* copy wave_r2 back */
+    /* copy wave_r2 back; compute r/r2 for newly visited cells */
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
-    for (int z = 0; z < L; z++)
-        grid[x][y][z].wave_r2 = grid_next[x][y][z].wave_r2;
+    for (int z = 0; z < L; z++) {
+        unsigned int old_wr2 = grid[x][y][z].wave_r2;
+        unsigned int new_wr2 = grid_next[x][y][z].wave_r2;
+        grid[x][y][z].wave_r2 = new_wr2;
+        if (new_wr2 != INF_R2 && old_wr2 == INF_R2) {
+            grid[x][y][z].r2 = (int)new_wr2;
+            grid[x][y][z].r  = isqrt((int)new_wr2);
+        }
+    }
 }
 
 /* ==========================================================
@@ -344,6 +332,7 @@ static void compute_profile(void) {
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++) {
+        if (grid[x][y][z].wave_r2 == INF_R2) continue;
         int r = grid[x][y][z].r;
         if (r < L) {
             profile[r] += grid[x][y][z].u;
@@ -592,6 +581,7 @@ void render_frame(SDL_Renderer *ren) {
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++)
         for (int z = 0; z < L; z++) {
+            if (grid[x][y][z].wave_r2 == INF_R2) continue;
             int r = grid[x][y][z].r;
 
             if (r < L) {
@@ -702,9 +692,8 @@ int main(void) {
     memset(grid,      0, sizeof(Cell) * L * L * L);
     memset(grid_next, 0, sizeof(Cell) * L * L * L);
 
-    /* initialize both CAs independently */
-    sinc_init();
-    pulse_init();
+    /* unified initialization (sinc wave + pulsating wavefront) */
+    init();
 
     int running = 1;
     while (running) {
