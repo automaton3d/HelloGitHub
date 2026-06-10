@@ -52,11 +52,11 @@ static int isqrt(int n) {
 /* ==========================================================
  * Unified initialization (sinc wave + pulsating wavefront)
  *
- * r2 and r are NO LONGER precomputed here.  They are filled
- * dynamically by the wavefront BFS (sum-of-odds) inside
- * pulse_step().  Until the wavefront reaches a cell its
- * r = r2 = 0, which is harmless because the sinc wave
- * has not arrived there yet either.
+ * r2 is filled dynamically by the wavefront BFS (sum-of-odds)
+ * inside pulse_step(); r = isqrt(r2) is cached on first visit.
+ * Until the wavefront reaches a cell, r2 = INF_R2 and r = 0,
+ * which is harmless because the sinc wave has not arrived
+ * there yet either.
  * ========================================================== */
 void init(void) {
     int cx = L/2, cy = L/2, cz = L/2;
@@ -71,13 +71,12 @@ void init(void) {
         c->sinc_p  = 0;
         c->sinc_q  = 1;
         c->r       = 0;
-        c->r2      = 0;
-        c->wave_r2 = INF_R2;
+        c->r2      = INF_R2;
         c->ttl     = 0;
         c->trig    = 0;
     }
     grid[cx][cy][cz].u       = 2048;
-    grid[cx][cy][cz].wave_r2 = 0;
+    grid[cx][cy][cz].r2 = 0;
 }
 
 /* ==========================================================
@@ -171,12 +170,12 @@ void sinc_step(void)
             ttl--;
 
         if (triggered &&
-            grid[x][y][z].wave_r2 != INF_R2)
+            grid[x][y][z].r2 != INF_R2)
         {
             unsigned int pulse_thr =
                 pulse_from_time((unsigned int)tick);
 
-            int delta = (int)grid[x][y][z].wave_r2
+            int delta = (int)grid[x][y][z].r2
                       - (int)pulse_thr;
             if (delta < 0) delta = -delta;
 
@@ -239,16 +238,16 @@ unsigned int pulse_from_time(unsigned int t) {
  * Pulsating wavefront CA — one tick
  * ========================================================== */
 static void pulse_update_wavefront(void) {
-    /* copy current wave_r2 into grid_next */
+    /* copy current r2 into grid_next */
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++)
-        grid_next[x][y][z].wave_r2 = grid[x][y][z].wave_r2;
+        grid_next[x][y][z].r2 = grid[x][y][z].r2;
 
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++) {
-        if (grid[x][y][z].wave_r2 == INF_R2) continue;
+        if (grid[x][y][z].r2 == INF_R2) continue;
 
         unsigned ax = (x > MID) ? (unsigned)(x - MID) : (unsigned)(MID - x);
         unsigned ay = (y > MID) ? (unsigned)(y - MID) : (unsigned)(MID - y);
@@ -271,9 +270,9 @@ static void pulse_update_wavefront(void) {
             else if (d < 4) diff = 2 * ay + 1;
             else diff = 2 * az + 1;
 
-            unsigned int new_r2 = grid[x][y][z].wave_r2 + diff;
-            if (new_r2 < grid_next[nx][ny][nz].wave_r2) {
-                grid_next[nx][ny][nz].wave_r2 = new_r2;
+            unsigned int new_r2 = grid[x][y][z].r2 + diff;
+            if (new_r2 < grid_next[nx][ny][nz].r2) {
+                grid_next[nx][ny][nz].r2 = new_r2;
             }
         }
     }
@@ -284,7 +283,7 @@ static int pulse_direction = 1;  /* 1 = expanding, -1 = contracting */
 
 void pulse_step(void) {
     pulse_update_wavefront();
-    grid_next[MID][MID][MID].wave_r2 = 0;
+    grid_next[MID][MID][MID].r2 = 0;
 
     /* detect sweep reversal → clear all fired (start fresh disk) */
     unsigned int cur_thr = pulse_from_time((unsigned int)tick);
@@ -294,16 +293,15 @@ void pulse_step(void) {
         pulse_direction = new_dir;
     }    prev_pulse_thr = cur_thr;
 
-    /* copy wave_r2 back; compute r/r2 for newly visited cells */
+    /* copy r2 back; compute r for newly visited cells */
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++) {
-        unsigned int old_wr2 = grid[x][y][z].wave_r2;
-        unsigned int new_wr2 = grid_next[x][y][z].wave_r2;
-        grid[x][y][z].wave_r2 = new_wr2;
-        if (new_wr2 != INF_R2 && old_wr2 == INF_R2) {
-            grid[x][y][z].r2 = (int)new_wr2;
-            grid[x][y][z].r  = isqrt((int)new_wr2);
+        unsigned int old_r2 = grid[x][y][z].r2;
+        unsigned int new_r2 = grid_next[x][y][z].r2;
+        grid[x][y][z].r2 = new_r2;
+        if (new_r2 != INF_R2 && old_r2 == INF_R2) {
+            grid[x][y][z].r = isqrt((int)new_r2);
         }
     }
 }
@@ -332,7 +330,7 @@ static void compute_profile(void) {
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++) {
-        if (grid[x][y][z].wave_r2 == INF_R2) continue;
+        if (grid[x][y][z].r2 == INF_R2) continue;
         int r = grid[x][y][z].r;
         if (r < L) {
             profile[r] += grid[x][y][z].u;
@@ -429,15 +427,15 @@ void render_frame(SDL_Renderer *ren) {
             uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
 
             /* layer 1: wavefront distance (green gradient) */
-            if (c->wave_r2 != INF_R2) {
-                int g = 255 - (isqrt((int)c->wave_r2) << 2);
+            if (c->r2 != INF_R2) {
+                int g = 255 - (isqrt((int)c->r2) << 2);
                 if (g < 0) g = 0;
                 pix_g = (uint32_t)g;
             }
 
             /* layer 2: wavefront shell (yellow ring, tight visual band) */
             {
-                int delta = (int)c->wave_r2 - (int)pulse_thr;
+                int delta = (int)c->r2 - (int)pulse_thr;
                 if (delta < 0) delta = -delta;
                 if (delta <= 3) {
                     pix_r = 255; pix_g = 255; pix_b = 0;
@@ -581,7 +579,7 @@ void render_frame(SDL_Renderer *ren) {
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++)
         for (int z = 0; z < L; z++) {
-            if (grid[x][y][z].wave_r2 == INF_R2) continue;
+            if (grid[x][y][z].r2 == INF_R2) continue;
             int r = grid[x][y][z].r;
 
             if (r < L) {

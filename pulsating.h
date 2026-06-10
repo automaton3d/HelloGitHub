@@ -39,11 +39,9 @@ typedef struct {
     int acc;            /* Bresenham accumulator */
     int sinc_p;         /* emergent sinc numerator */
     int sinc_q;         /* emergent sinc denominator */
-    /* shared geometry */
-    int r;              /* integer radius from center (filled by wavefront) */
-    int r2;             /* Euclidean distance squared  (filled by wavefront) */
-    /* pulsating wavefront CA */
-    unsigned int wave_r2;  /* wavefront distance² (INF_R2 = unvisited) */
+    /* shared geometry (filled dynamically by wavefront BFS) */
+    int r;              /* integer radius from center */
+    unsigned int r2;    /* Euclidean distance² (INF_R2 = unvisited) */
     /* trigger + wavefront coincidence (persistent, recalculated on next sweep) */
     unsigned char ttl;
     unsigned char trig;    /* 1 if Bresenham triggered this tick, else 0 */
