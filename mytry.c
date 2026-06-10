@@ -107,7 +107,7 @@ void sinc_step(void)
         int v_new = v + (lap >> diff_shift);
         int u_new = u + v_new;
 
-        v_new -= (v_new >> 5);
+        v_new -= (v_new >> VEL_DAMP_SHIFT);
 
         /* shell forcing */
         int dr = r - SHELL_R;
@@ -162,7 +162,7 @@ void sinc_step(void)
 
         unsigned char ttl = grid[x][y][z].ttl;
 
-        if ((tick & 31) == 0 && ttl > 0)
+        if ((tick & TTL_DECAY_MASK) == 0 && ttl > 0)
             ttl--;
 
         if (triggered &&
@@ -424,8 +424,8 @@ void render_frame(SDL_Renderer *ren) {
 
             /* layer 1: wavefront distance (green gradient) */
             if (c->r2 != INF_R2) {
-                int g = 255 - (isqrt((int)c->r2) << 2);
-                if (g < 0) g = 0;
+                int rr = isqrt((int)c->r2);
+                int g = (rr < RADIUS) ? 255 - (rr * 255 / RADIUS) : 0;
                 pix_g = (uint32_t)g;
             }
 

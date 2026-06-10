@@ -25,9 +25,14 @@
 #define PULSE_TOLERANCE  ((L * L + 150) / 300)   /* ~1.4% of max_r2          */
 #define PULSE_STEP       (((L) + 15) / 30)        /* sweep period ~ linear in L */
 #define ABSORB_W         ((RADIUS / 27) > 2 ? (RADIUS / 27) : 2)
-#define DIFF_DIV_SHIFT   ((RADIUS >= 96) ? 4 : (RADIUS >= 40) ? 3 : 2)
+#define DIFF_DIV_SHIFT   ((RADIUS >= 384) ? 6 : (RADIUS >= 192) ? 5 : \
+                          (RADIUS >=  96) ? 4 : (RADIUS >=  40) ? 3 : 2)
 #define SMOOTH_W         ((RADIUS / 20) > 1 ? (RADIUS / 20) : 1)
 #define YELLOW_VIS_TOL   ((RADIUS / 35) > 1 ? (RADIUS / 35) : 1)
+#define TTL_DECAY_MASK   ((RADIUS >= 384) ? 127 : (RADIUS >= 192) ? 63 : \
+                          (RADIUS >=  96) ?  31 : (RADIUS >=  40) ? 15 : 7)
+#define VEL_DAMP_SHIFT   ((RADIUS >= 384) ? 9 : (RADIUS >= 192) ? 8 : \
+                          (RADIUS >=  96) ? 7 : (RADIUS >=  40) ? 6 : 5)
 
 /* --- Display --- */
 #define WINDOW_W 1850
