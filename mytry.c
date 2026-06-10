@@ -100,7 +100,7 @@ void sinc_step(void)
 
         int r = grid[x][y][z].r;
 
-        int diff_shift = DIFF_SHIFT + 1 - (r >> 4);
+        int diff_shift = DIFF_SHIFT + 1 - (r >> DIFF_DIV_SHIFT);
         if (diff_shift < DIFF_SHIFT - 1)
             diff_shift = DIFF_SHIFT - 1;
 
@@ -127,19 +127,15 @@ void sinc_step(void)
             }
         }
 
-        /* boundary absorption */
-        if (r > RADIUS - 4)
+        /* boundary absorption (ABSORB_W scales with RADIUS) */
+        if (r > RADIUS - ABSORB_W)
         {
-            int dist = r - (RADIUS - 4);
+            int dist = r - (RADIUS - ABSORB_W);
 
-            if (dist >= 4)
+            if (dist >= ABSORB_W)
                 u_new = 0;
-            else if (dist == 3)
-                u_new >>= 2;
-            else if (dist == 2)
-                u_new = (u_new >> 2) + (u_new >> 3);
             else
-                u_new >>= 1;
+                u_new >>= dist;  /* dist=1→50%, dist=2→25%, … */
         }
 
         if (r >= RADIUS)
@@ -223,7 +219,7 @@ void sinc_step(void)
 unsigned int pulse_from_time(unsigned int t) {
     const unsigned int min_r2 = 0;
     const unsigned int max_r2 = (unsigned int)(R_MAX * R_MAX * 0.92);
-    const unsigned int step = 7;
+    const unsigned int step = PULSE_STEP;
     unsigned int span = max_r2 - min_r2;
     if (span == 0) return min_r2;
     unsigned int period = 2 * span;
@@ -437,7 +433,7 @@ void render_frame(SDL_Renderer *ren) {
             {
                 int delta = (int)c->r2 - (int)pulse_thr;
                 if (delta < 0) delta = -delta;
-                if (delta <= 3) {
+                if (delta <= YELLOW_VIS_TOL) {
                     pix_r = 255; pix_g = 255; pix_b = 0;
                 }
             }
@@ -586,8 +582,6 @@ void render_frame(SDL_Renderer *ren) {
                 ttl_sum[r] += grid[x][y][z].ttl;
             }
         }
-
-        #define SMOOTH_W 5
 
         float smoothed[L];
 
