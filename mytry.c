@@ -29,6 +29,8 @@ const int MID   = L / 2;
 const int R_MAX = L / 2;
 int tick = 0;
 
+static long and_count[L];         /* accumulated AND hits per shell radius */
+
 /* ==========================================================
  * Integer square root — shift-only, no division, no multiply
  * ========================================================== */
@@ -171,6 +173,9 @@ void sinc_step(void)
         {
             ttl = 32 + ((223 * grid[x][y][z].sinc_p) /
                         grid[x][y][z].sinc_q);
+            int rr = grid[x][y][z].r;
+            if (rr >= 0 && rr < L)
+                and_count[rr]++;
         }
 
         grid_next[x][y][z].u      = u_new;
@@ -562,54 +567,26 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
-    /* red: radial profile of total TTL per shell (AND of trigger × geometry) */
+    /* dark gray vertical line at current pulse radius */
     {
-        long ttl_sum[L];
-
-        memset(ttl_sum, 0, sizeof(ttl_sum));
-
-        for (int x = 0; x < L; x++)
-        for (int y = 0; y < L; y++)
-        for (int z = 0; z < L; z++) {
-            if (grid[x][y][z].r2 == INF_R2) continue;
-            int r = grid[x][y][z].r;
-
-            if (r < L) {
-                ttl_sum[r] += grid[x][y][z].ttl;
-            }
+        unsigned int pulse_r2 = pulse_from_time((unsigned int)tick);
+        int cur_r = isqrt((int)pulse_r2);
+        if (cur_r < RADIUS) {
+            int cx = px0 + cur_r * GRAPH_SCALE_X;
+            SDL_SetRenderDrawColor(ren, 60, 60, 60, 255);
+            SDL_RenderLine(ren, (float)cx, (float)(py0 - GRAPH_HEIGHT),
+                           (float)cx, (float)py0);
         }
+    }
 
-        float smoothed[L];
-
-        for (int r = 0; r < RADIUS; r++) {
-            float sum = 0.0f;
-            int count = 0;
-
-            for (int k = r - SMOOTH_W;
-                     k <= r + SMOOTH_W;
-                     k++)
-            {
-                if (k >= 0 && k < RADIUS)
-                {
-                    sum += (float)ttl_sum[k];
-                    count++;
-                }
-            }
-
-            smoothed[r] =
-                (count > 0)
-                ? sum / (float)count
-                : 0.0f;
-        }
-
-        float max_density = 0.0f;
-
+    /* red: AND-ed point count per shell radius (accumulated) */
+    {
+        long max_count = 0;
         for (int r = 0; r < RADIUS; r++)
-            if (smoothed[r] > max_density)
-                max_density = smoothed[r];
+            if (and_count[r] > max_count)
+                max_count = and_count[r];
 
-        if (max_density < 1e-6f)
-            max_density = 1.0f;
+        if (max_count < 1) max_count = 1;
 
         SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
 
@@ -617,10 +594,9 @@ void render_frame(SDL_Renderer *ren) {
         float fpy = -1.0f;
 
         for (int r = 0; r < RADIUS; r++) {
-
             float yf =
                 (float)py0 -
-                (smoothed[r] / max_density) *
+                ((float)and_count[r] / (float)max_count) *
                 (float)GRAPH_HEIGHT;
 
             float xf =
