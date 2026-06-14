@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 
 /* --- Grid allocation (heap, too large for stack) --- */
 Cell (*grid)[L][L]      = NULL;
@@ -274,14 +275,14 @@ void pulse_step(void) {
 
 #define PEAK_HIST_W  600
 
-static long profile[L];
-static long prev_profile[L];
+static int64_t profile[L];
+static int64_t prev_profile[L];
 static int  rcount[L];
 static int  peak_history[PEAK_HIST_W];
 static int  peak_idx = 0;
 static int  sinc_stable_frames = 0;
 static int  sinc_converged = 0;
-static long u_peak = 0;
+static int64_t u_peak = 0;
 
 static void compute_profile(void) {
     for (int i = 0; i < L; i++) {
@@ -305,10 +306,10 @@ static void compute_profile(void) {
     }
 }
 
-static long profile_max_change(void) {
-    long maxd = 0;
+static int64_t profile_max_change(void) {
+    int64_t maxd = 0;
     for (int i = 0; i < RADIUS; i++) {
-        long d = profile[i] - prev_profile[i];
+        int64_t d = profile[i] - prev_profile[i];
         if (d < 0) d = -d;
         if (d > maxd) maxd = d;
     }
@@ -325,7 +326,7 @@ void render_frame(SDL_Renderer *ren) {
     SDL_RenderClear(ren);
 
     compute_profile();
-    long max_change = profile_max_change();
+    int64_t max_change = profile_max_change();
 
     /* detect sinc convergence → set rationals */
     if (!sinc_converged) {
@@ -352,12 +353,12 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
-    int peak = 1;
+    int64_t peak = 1;
     for (int r = 0; r < RADIUS; r++) {
         if (rcount[r] > 0 && profile[r] > peak)
-            peak = (int)profile[r];
+            peak = profile[r];
     }
-    peak_history[peak_idx] = peak;
+    peak_history[peak_idx] = (int)(peak > INT32_MAX ? INT32_MAX : peak);
     peak_idx = (peak_idx + 1) % PEAK_HIST_W;
 
     /* -------------------------------------------------------
@@ -494,7 +495,7 @@ void render_frame(SDL_Renderer *ren) {
         float gpx = -1, gpy = -1;
         for (int r = 0; r < RADIUS; r++) {
             if (rcount[r] > 0) {
-                float yf = (float)py0 - ((float)profile[r] * GRAPH_HEIGHT) / (float)peak;
+                float yf = (float)py0 - ((float)profile[r] * GRAPH_HEIGHT) / (float)PROFILE_PEAK_REF;
                 float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
                 if (gpx >= 0)
                     SDL_RenderLine(ren, gpx, gpy, xf, yf);
@@ -585,8 +586,8 @@ void render_frame(SDL_Renderer *ren) {
     {
         unsigned int pr2 = pulse_from_time((unsigned int)tick);
         int cr = isqrt((int)pr2);
-        printf("\r[tick %4d] peak=%d stable=%d converged=%d r=%d  ",
-               tick, peak, sinc_stable_frames, sinc_converged, cr);
+        printf("\r[tick %4d] peak=%lld stable=%d converged=%d r=%d  ",
+               tick, (long long)peak, sinc_stable_frames, sinc_converged, cr);
     }
     fflush(stdout);
     } /* end graph block */

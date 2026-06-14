@@ -67,6 +67,13 @@
 #define STABILITY_THRESHOLD 35
 #define STABILITY_FRAMES    180
 
+/* --- Graph normalization: absolute peak reference (scales with L) ---
+ * The shell forcing drives u toward SHELL_TARGET at r=SHELL_R.
+ * Spherical focusing amplifies the peak at small r by roughly
+ * sqrt(RADIUS/SHELL_R).  This reference keeps the Y-axis stable
+ * and consistent across grid sizes.                                  */
+#define PROFILE_PEAK_REF  (SHELL_TARGET * 3)
+
 /* --- 3-D flat indexing --- */
 #define IDX(x,y,z) ((x)*L*L + (y)*L + (z))
 
