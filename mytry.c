@@ -25,31 +25,9 @@
 Cell (*grid)[L][L]      = NULL;
 Cell (*grid_next)[L][L] = NULL;
 
-const int MID   = L / 2;
-const int R_MAX = L / 2;
 int tick = 0;
 
-static long and_count[L];         /* accumulated AND hits per shell radius */
-
-/* ==========================================================
- * Integer square root — shift-only, no division, no multiply
- * ========================================================== */
-static int isqrt(int n) {
-    if (n <= 0) return 0;
-    int result = 0;
-    int bit = 1 << 30;
-    while (bit > n) bit >>= 2;
-    while (bit != 0) {
-        if (n >= result + bit) {
-            n -= result + bit;
-            result = (result >> 1) + bit;
-        } else {
-            result >>= 1;
-        }
-        bit >>= 2;
-    }
-    return result;
-}
+static int and_count[L];          /* accumulated AND hits per shell radius */
 
 /* ==========================================================
  * Unified initialization (sinc wave + pulsating wavefront)
@@ -85,6 +63,7 @@ void init(void) {
 /* ==========================================================
  * Sinc wave CA — one tick (integer-only in the hot loop)
  * ========================================================== */
+#ifndef USE_CUDA
 void sinc_step(void)
 {
     int cur_sweep_r = isqrt((int)pulse_from_time((unsigned int)tick));
@@ -212,23 +191,6 @@ void sinc_step(void)
 }
 
 /* ==========================================================
- * Pulsating wavefront CA — deterministic pulse threshold
- * ========================================================== */
-unsigned int pulse_from_time(unsigned int t) {
-    const unsigned int min_r2 = 0;
-    const unsigned int max_r2 = (unsigned int)(R_MAX * R_MAX * 0.92);
-    const unsigned int step = PULSE_STEP;
-    unsigned int span = max_r2 - min_r2;
-    if (span == 0) return min_r2;
-    unsigned int period = 2 * span;
-    unsigned int phase = (t * step) % period;
-    if (phase < span)
-        return min_r2 + phase;
-    else
-        return max_r2 - (phase - span);
-}
-
-/* ==========================================================
  * Pulsating wavefront CA — one tick
  * ========================================================== */
 /* 6-neighbor offsets: +x,-x,+y,-y,+z,-z */
@@ -304,6 +266,7 @@ void pulse_step(void) {
         }
     }
 }
+#endif /* !USE_CUDA */
 
 /* ==========================================================
  * Rendering (SDL3)
@@ -353,6 +316,11 @@ static long profile_max_change(void) {
 }
 
 void render_frame(SDL_Renderer *ren) {
+#ifdef USE_CUDA
+    cuda_download_grid((void *)grid);
+    cuda_download_and_count(and_count, L);
+#endif
+
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
 
@@ -378,6 +346,9 @@ void render_frame(SDL_Renderer *ren) {
                 }
             }
             printf("Sinc converged at tick %d — triggers active.\n", tick);
+#ifdef USE_CUDA
+            cuda_upload_grid_full((void *)grid);
+#endif
         }
     }
 
@@ -584,7 +555,7 @@ void render_frame(SDL_Renderer *ren) {
 
     /* red: AND-ed point count per shell radius (scatter plot) */
     {
-        long max_count = 0;
+        int max_count = 0;
         for (int r = 0; r < RADIUS; r++)
             if (and_count[r] > max_count)
                 max_count = and_count[r];
@@ -627,8 +598,13 @@ void render_frame(SDL_Renderer *ren) {
  * Unified step — pulsating wavefront first, then sinc wave
  * ========================================================== */
 void step_all(void) {
-    pulse_step();   /* BFS + active flags first */
-    sinc_step();    /* wave eq + Bresenham + AND with active */
+#ifdef USE_CUDA
+    cuda_pulse_step(tick);
+    cuda_sinc_step(tick);
+#else
+    pulse_step();
+    sinc_step();
+#endif
     tick++;
 }
 
@@ -671,6 +647,11 @@ int main(void) {
     /* unified initialization (sinc wave + pulsating wavefront) */
     init();
 
+#ifdef USE_CUDA
+    cuda_alloc_grids();
+    cuda_upload_grid((void *)grid, (void *)grid_next);
+#endif
+
     int running = 1;
     while (running) {
         SDL_Event e;
@@ -684,6 +665,9 @@ int main(void) {
         SDL_Delay(16);
     }
 
+#ifdef USE_CUDA
+    cuda_free();
+#endif
     free(grid);
     free(grid_next);
     SDL_DestroyRenderer(renderer);

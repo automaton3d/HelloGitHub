@@ -1,16 +1,40 @@
 /*
  * pulsating.h — unified header for sinc wave CA + pulsating wavefront CA
+ *
+ * Shared between CPU (mytry.c) and CUDA (ca_cuda.cu) builds.
+ * Define USE_CUDA to enable CUDA wrappers; define NO_SDL when
+ * compiling translation units that do not link against SDL.
  */
 
 #ifndef PULSATING_H_
 #define PULSATING_H_
 
+/* --- CUDA / MSVC portability macros --- */
+#ifdef __CUDACC__
+#define HD __host__ __device__
+#else
+#define HD
+#endif
+
+#if defined(_MSC_VER) && !defined(__cplusplus)
+#define SINLINE static __inline
+#else
+#define SINLINE static inline
+#endif
+
+/* --- SDL (only needed for host rendering code) --- */
+#ifndef NO_SDL
 #include <SDL3/SDL.h>
+#endif
+
 #include <stdint.h>
 
+/* --- Grid dimensions --- */
 #define L 221
 #define INF_R2 0xFFFFFFFFu
 #define GRID_SPACING 8
+#define MID   (L / 2)
+#define R_MAX (L / 2)
 
 /* --- Geometry constants (derived from L) --- */
 #define RADIUS      (L/2 - 2)
@@ -21,9 +45,8 @@
 #define SHELL_TARGET 16384
 
 /* --- Scaled constants (L-invariant behaviour) --- */
-/* Calibrated at L=51 so that behaviour is proportional at any L */
-#define PULSE_TOLERANCE  ((L * L + 150) / 300)   /* ~1.4% of max_r2          */
-#define PULSE_STEP       (((L) + 15) / 30)        /* sweep period ~ linear in L */
+#define PULSE_TOLERANCE  ((L * L + 150) / 300)
+#define PULSE_STEP       (((L) + 15) / 30)
 #define ABSORB_W         ((RADIUS / 27) > 2 ? (RADIUS / 27) : 2)
 #define DIFF_DIV_SHIFT   ((RADIUS >= 384) ? 6 : (RADIUS >= 192) ? 5 : \
                           (RADIUS >=  96) ? 4 : (RADIUS >=  40) ? 3 : 2)
@@ -44,6 +67,9 @@
 #define STABILITY_THRESHOLD 35
 #define STABILITY_FRAMES    180
 
+/* --- 3-D flat indexing --- */
+#define IDX(x,y,z) ((x)*L*L + (y)*L + (z))
+
 /* --- Unified Cell struct --- */
 typedef struct {
     /* sinc wave CA */
@@ -54,32 +80,69 @@ typedef struct {
     int sinc_q;         /* emergent sinc denominator */
     /* shared geometry (filled dynamically by wavefront BFS) */
     int r;              /* integer radius from center */
-    unsigned int r2;    /* Euclidean distance² (INF_R2 = unvisited) */
+    unsigned int r2;    /* Euclidean distance-squared (INF_R2 = unvisited) */
     unsigned int active;/* 1 if |r2 - pulse_r2| <= PULSE_TOLERANCE */
-    /* trigger + wavefront coincidence (persistent, recalculated on next sweep) */
+    /* trigger + wavefront coincidence */
     unsigned char ttl;
-    unsigned char trig;    /* 1 if Bresenham triggered this tick, else 0 */
-
+    unsigned char trig; /* 1 if Bresenham triggered this tick, else 0 */
 } Cell;
 
 /* --- Grid pointers (heap-allocated due to size) --- */
 extern Cell (*grid)[L][L];
 extern Cell (*grid_next)[L][L];
-
-extern const int MID;
-extern const int R_MAX;
 extern int tick;
 
-/* --- Unified init (sinc + wavefront) --- */
-void init(void);
+/* ================================================================
+ * Shared utility functions (available on both host and device)
+ * ================================================================ */
 
-/* --- Per-tick updates --- */
+SINLINE HD int isqrt(int n) {
+    if (n <= 0) return 0;
+    int result = 0;
+    int bit = 1 << 30;
+    while (bit > n) bit >>= 2;
+    while (bit != 0) {
+        if (n >= result + bit) {
+            n -= result + bit;
+            result = (result >> 1) + bit;
+        } else {
+            result >>= 1;
+        }
+        bit >>= 2;
+    }
+    return result;
+}
+
+SINLINE HD unsigned int pulse_from_time(unsigned int t) {
+    const unsigned int min_r2 = 0;
+    const unsigned int max_r2 = (unsigned int)((unsigned int)R_MAX * R_MAX * 92 / 100);
+    const unsigned int step = PULSE_STEP;
+    unsigned int span = max_r2 - min_r2;
+    if (span == 0) return min_r2;
+    unsigned int period = 2 * span;
+    unsigned int phase  = (t * step) % period;
+    if (phase < span)
+        return min_r2 + phase;
+    else
+        return max_r2 - (phase - span);
+}
+
+/* --- Host-side functions (mytry.c) --- */
+void init(void);
+void step_all(void);
+
+#ifndef USE_CUDA
 void sinc_step(void);
 void pulse_step(void);
-void step_all(void);
-unsigned int pulse_from_time(unsigned int t);
+#endif
 
-/* --- Rendering --- */
+#ifndef NO_SDL
 void render_frame(SDL_Renderer *ren);
+#endif
+
+/* --- CUDA wrappers (ca_cuda.cu) --- */
+#ifdef USE_CUDA
+#include "ca_cuda.h"
+#endif
 
 #endif /* PULSATING_H_ */

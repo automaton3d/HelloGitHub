@@ -1,0 +1,50 @@
+# Makefile.cuda — build the CA with CUDA acceleration
+#
+# Prerequisites:
+#   - NVIDIA CUDA Toolkit (nvcc)
+#   - SDL3 development headers and library
+#
+# Usage:
+#   make -f Makefile.cuda           # build (Linux)
+#   make -f Makefile.cuda clean     # remove artefacts
+#
+# On Windows with MSVC, use the equivalent:
+#   nvcc -c ca_cuda.cu -o ca_cuda.obj -DNO_SDL -DUSE_CUDA
+#   cl /DUSE_CUDA mytry.c ca_cuda.obj /I<sdl3-include> /link <sdl3-lib>
+
+# --- toolchain -----------------------------------------------------------
+NVCC     ?= nvcc
+CC       ?= gcc
+CFLAGS   ?= -O2 -Wall -DUSE_CUDA
+NVCFLAGS ?= -O2 -DNO_SDL -DUSE_CUDA
+LDFLAGS  ?= -lcudart -lSDL3 -lm
+
+# SDL3 (adjust if installed elsewhere)
+SDL_INC  ?=
+SDL_LIB  ?=
+
+ifneq ($(SDL_INC),)
+  CFLAGS  += -I$(SDL_INC)
+endif
+ifneq ($(SDL_LIB),)
+  LDFLAGS += -L$(SDL_LIB)
+endif
+
+# --- targets --------------------------------------------------------------
+TARGET = mytry_cuda
+
+all: $(TARGET)
+
+ca_cuda.o: ca_cuda.cu ca_cuda.h pulsating.h
+	$(NVCC) -c $(NVCFLAGS) ca_cuda.cu -o ca_cuda.o
+
+mytry.o: mytry.c pulsating.h ca_cuda.h
+	$(CC) -c $(CFLAGS) $(if $(SDL_INC),-I$(SDL_INC)) mytry.c -o mytry.o
+
+$(TARGET): mytry.o ca_cuda.o
+	$(CC) mytry.o ca_cuda.o -o $(TARGET) $(LDFLAGS)
+
+clean:
+	rm -f *.o $(TARGET)
+
+.PHONY: all clean
