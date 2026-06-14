@@ -62,6 +62,7 @@ void init(void) {
         c->sinc_q  = 1;
         c->r       = 0;
         c->r2      = INF_R2;
+        c->active  = 0;
         c->trig    = 0;
     }
     grid[cx][cy][cz].u  = 2048;
@@ -131,16 +132,13 @@ void sinc_step(void) {
             triggered = 1;
         }
 
+        /* AND interaction: Bresenham trigger × pulsating active */
         unsigned char ttl = 0;
-        if (triggered && grid[x][y][z].r2 != INF_R2) {
-            unsigned int pulse_thr = pulse_from_time((unsigned int)tick);
-            int delta = (int)grid[x][y][z].r2 - (int)pulse_thr;
-            if (delta < 0) delta = -delta;
-            if (delta <= PULSE_TOLERANCE) {
-                ttl = 255;
-                int rr = grid[x][y][z].r;
+        if (triggered && grid[x][y][z].active) {
+            ttl = 255;
+            int rr = grid[x][y][z].r;
+            if (rr >= 0 && rr < L)
                 current_shell_hits[rr]++;
-            }
         }
 
         grid_next[x][y][z].u      = u_new;
@@ -229,12 +227,6 @@ void pulse_step(void) {
     pulse_update_wavefront();
     grid_next[MID][MID][MID].r2 = 0;
 
-    /* cálculo de reversão de direção mantido apenas como lógica local */
-    unsigned int cur_thr = pulse_from_time((unsigned int)tick);
-    unsigned int next_thr = pulse_from_time((unsigned int)(tick + 1));
-    int new_dir = (next_thr >= cur_thr) ? 1 : -1;
-    (void)new_dir; /* evita warning, mas não armazena estado */
-
     /* copy r2 back; compute r for newly visited cells */
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
@@ -244,6 +236,20 @@ void pulse_step(void) {
         grid[x][y][z].r2 = new_r2;
         if (new_r2 != INF_R2 && old_r2 == INF_R2) {
             grid[x][y][z].r = isqrt((int)new_r2);
+        }
+    }
+
+    /* activation flags (product of pulsating CA only) */
+    unsigned int pulse_r2 = pulse_from_time((unsigned int)tick);
+    for (int x = 0; x < L; x++)
+    for (int y = 0; y < L; y++)
+    for (int z = 0; z < L; z++) {
+        unsigned int r2 = grid[x][y][z].r2;
+        if (r2 == INF_R2) {
+            grid[x][y][z].active = 0;
+        } else {
+            unsigned int d = (r2 > pulse_r2) ? (r2 - pulse_r2) : (pulse_r2 - r2);
+            grid[x][y][z].active = (d <= PULSE_TOLERANCE) ? 1 : 0;
         }
     }
 }
@@ -524,8 +530,8 @@ void render_frame(SDL_Renderer *ren) {
  * Unified step — sinc wave + pulsating wavefront
  * ========================================================== */
 void step_all(void) {
-    sinc_step();
-    pulse_step();
+    pulse_step();   /* BFS + active flags first */
+    sinc_step();    /* wave eq + Bresenham + AND with active */
     tick++;
 }
 

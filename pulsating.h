@@ -39,6 +39,7 @@ typedef struct {
     int sinc_q;     /* denominador */
     int r;          /* raio inteiro */
     unsigned int r2;/* raio ao quadrado */
+    unsigned int active; /* 1 se |r2 - pulse_r2| <= PULSE_TOLERANCE */
     unsigned char ttl;   /* tempo de vida */
     unsigned char trig;  /* flag de disparo */
 } Cell;
