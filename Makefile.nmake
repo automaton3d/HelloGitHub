@@ -1,0 +1,60 @@
+# Makefile.nmake — build the CA with CUDA acceleration (MSVC + nvcc)
+#
+# Usage:
+#   nmake /f Makefile.nmake                         # build
+#   nmake /f Makefile.nmake clean                   # remove artefacts
+#
+# Override SDL3 paths if needed:
+#   nmake /f Makefile.nmake SDL_INC=C:\SDL3\include SDL_LIB=C:\SDL3\lib
+#
+# CPU-only build (no CUDA):
+#   nmake /f Makefile.nmake CPU_ONLY=1
+
+# --- SDL3 paths (adjust to your installation) ---
+SDL_INC = C:\SDL3\include
+SDL_LIB = C:\SDL3\lib
+
+# --- toolchain ---
+CC   = cl
+NVCC = nvcc
+LINK = link
+
+TARGET = mytry_cuda.exe
+
+# --- flags ---
+CFLAGS   = /nologo /O2 /W3 /DUSE_CUDA /I"$(SDL_INC)"
+NVCFLAGS = -O2 -DNO_SDL -DUSE_CUDA
+LDFLAGS  = /nologo /LIBPATH:"$(SDL_LIB)" SDL3.lib cudart.lib
+
+!IF DEFINED(CPU_ONLY)
+TARGET   = mytry_cpu.exe
+CFLAGS   = /nologo /O2 /W3 /I"$(SDL_INC)"
+!ENDIF
+
+# --- targets ---
+all: $(TARGET)
+
+!IF DEFINED(CPU_ONLY)
+
+mytry_cpu.obj: mytry.c pulsating.h
+	$(CC) /c $(CFLAGS) mytry.c /Fo"mytry_cpu.obj"
+
+$(TARGET): mytry_cpu.obj
+	$(LINK) mytry_cpu.obj /OUT:$(TARGET) /nologo /LIBPATH:"$(SDL_LIB)" SDL3.lib
+
+!ELSE
+
+ca_cuda.obj: ca_cuda.cu ca_cuda.h pulsating.h
+	$(NVCC) -c $(NVCFLAGS) ca_cuda.cu -o ca_cuda.obj
+
+mytry.obj: mytry.c pulsating.h ca_cuda.h
+	$(CC) /c $(CFLAGS) mytry.c /Fo"mytry.obj"
+
+$(TARGET): mytry.obj ca_cuda.obj
+	$(LINK) mytry.obj ca_cuda.obj /OUT:$(TARGET) $(LDFLAGS)
+
+!ENDIF
+
+clean:
+	-del /q *.obj *.exe *.exp *.lib 2>nul
+
