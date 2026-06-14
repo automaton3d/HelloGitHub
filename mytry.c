@@ -231,6 +231,11 @@ unsigned int pulse_from_time(unsigned int t) {
 /* ==========================================================
  * Pulsating wavefront CA — one tick
  * ========================================================== */
+/* 6-neighbor offsets: +x,-x,+y,-y,+z,-z */
+static const int ddx[6] = {1, -1, 0,  0, 0,  0};
+static const int ddy[6] = {0,  0, 1, -1, 0,  0};
+static const int ddz[6] = {0,  0, 0,  0, 1, -1};
+
 static void pulse_update_wavefront(void) {
     /* copy current r2 into grid_next */
     for (int x = 0; x < L; x++)
@@ -243,23 +248,18 @@ static void pulse_update_wavefront(void) {
     for (int z = 0; z < L; z++) {
         if (grid[x][y][z].r2 == INF_R2) continue;
 
-        unsigned ax = (x > MID) ? (unsigned)(x - MID) : (unsigned)(MID - x);
-        unsigned ay = (y > MID) ? (unsigned)(y - MID) : (unsigned)(MID - y);
-        unsigned az = (z > MID) ? (unsigned)(z - MID) : (unsigned)(MID - z);
-
-        /* 6 neighbors */
-        int dx[6] = {1, -1, 0,  0, 0,  0};
-        int dy[6] = {0,  0, 1, -1, 0,  0};
-        int dz[6] = {0,  0, 0,  0, 1, -1};
+        unsigned int ax = (x > MID) ? (unsigned int)(x - MID) : (unsigned int)(MID - x);
+        unsigned int ay = (y > MID) ? (unsigned int)(y - MID) : (unsigned int)(MID - y);
+        unsigned int az = (z > MID) ? (unsigned int)(z - MID) : (unsigned int)(MID - z);
 
         for (int d = 0; d < 6; d++) {
-            int nx = x + dx[d];
-            int ny = y + dy[d];
-            int nz = z + dz[d];
+            int nx = x + ddx[d];
+            int ny = y + ddy[d];
+            int nz = z + ddz[d];
             if (nx < 0 || nx >= L || ny < 0 || ny >= L || nz < 0 || nz >= L)
                 continue;
 
-            unsigned diff;
+            unsigned int diff;
             if (d < 2) diff = 2 * ax + 1;
             else if (d < 4) diff = 2 * ay + 1;
             else diff = 2 * az + 1;
@@ -507,6 +507,7 @@ void render_frame(SDL_Renderer *ren) {
     /* -------------------------------------------------------
      * Bottom: sinc(r) profile graph
      * ------------------------------------------------------- */
+    {
     int px0 = 80;
     int py0 = WINDOW_H - 40;
     int graph_w = RADIUS * GRAPH_SCALE_X;
@@ -590,7 +591,7 @@ void render_frame(SDL_Renderer *ren) {
 
         if (max_count < 1) max_count = 1;
 
-        SDL_SetRenderDrawColor(ren, 255, 0, 0, 255);
+        SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
 
         for (int r = 0; r < RADIUS; r++) {
             if (and_count[r] == 0) continue;
@@ -617,6 +618,7 @@ void render_frame(SDL_Renderer *ren) {
                tick, peak, sinc_stable_frames, sinc_converged, cr);
     }
     fflush(stdout);
+    } /* end graph block */
 
     SDL_RenderPresent(ren);
 }
