@@ -1,13 +1,18 @@
-#define MYTRY
-#ifdef MYTRY
 /*
  * mytry.c — unified sinc wave CA + pulsating wavefront CA
  *
- * Dois autômatos celulares integrados em um único fluxo:
- *   1) Sinc wave: equação de onda discreta → sin(r)/r emergente
- *   2) Pulsating wavefront: propagação BFS com casca pulsante
+ * Two independent CAs share the same grid structure:
+ *   1) Sinc wave: 3-D integer-only wave equation → emergent sin(r)/r
+ *      with Bresenham accumulator triggers.
+ *   2) Pulsating wavefront: BFS distance propagation with pulsing shell.
  *
- * Agora tratados como um único sistema, com step_all().
+ * No interaction between the two CAs (for now).
+ *
+ * Constraints inside sinc_step():
+ *   - no floating-point
+ *   - no multiplication (*)
+ *   - no division (/)
+ *   - no lookup tables
  */
 
 #include "pulsating.h"
@@ -24,7 +29,6 @@ const int MID   = L / 2;
 const int R_MAX = L / 2;
 int tick = 0;
 
-static float current_shell_hits[L];
 /* ==========================================================
  * Integer square root — shift-only, no division, no multiply
  * ========================================================== */
@@ -46,7 +50,13 @@ static int isqrt(int n) {
 }
 
 /* ==========================================================
- * Unified initialization
+ * Unified initialization (sinc wave + pulsating wavefront)
+ *
+ * r2 is filled dynamically by the wavefront BFS (sum-of-odds)
+ * inside pulse_step(); r = isqrt(r2) is cached on first visit.
+ * Until the wavefront reaches a cell, r2 = INF_R2 and r = 0,
+ * which is harmless because the sinc wave has not arrived
+ * there yet either.
  * ========================================================== */
 void init(void) {
     int cx = L/2, cy = L/2, cz = L/2;
@@ -63,20 +73,22 @@ void init(void) {
         c->r       = 0;
         c->r2      = INF_R2;
         c->active  = 0;
+        c->ttl     = 0;
         c->trig    = 0;
     }
-    grid[cx][cy][cz].u  = 2048;
+    grid[cx][cy][cz].u       = 2048;
     grid[cx][cy][cz].r2 = 0;
 }
 
 /* ==========================================================
- * Sinc wave CA — one tick
+ * Sinc wave CA — one tick (integer-only in the hot loop)
  * ========================================================== */
-void sinc_step(void) {
-    memset(current_shell_hits, 0, sizeof(current_shell_hits));
+void sinc_step(void)
+{
     for (int x = 1; x < L-1; x++)
     for (int y = 1; y < L-1; y++)
-    for (int z = 1; z < L-1; z++) {
+    for (int z = 1; z < L-1; z++)
+    {
         int u = grid[x][y][z].u;
         int v = grid[x][y][z].v;
 
@@ -102,43 +114,63 @@ void sinc_step(void) {
         int dr = r - SHELL_R;
         if (dr < 0) dr = -dr;
 
-        if (dr <= SHELL_W) {
-            if (u > SHELL_TARGET) {
+        if (dr <= SHELL_W)
+        {
+            if (u > SHELL_TARGET)
+            {
                 int excess = u - SHELL_TARGET;
                 v_new -= (excess >> 4);
-            } else if ((tick & 3) == 0) {
+            }
+            else if ((tick & 3) == 0)
+            {
                 int deficit = SHELL_TARGET - u;
                 v_new += (deficit >> 10) + 1;
             }
         }
 
-        /* boundary absorption */
-        if (r > RADIUS - ABSORB_W) {
+        /* boundary absorption (ABSORB_W scales with RADIUS) */
+        if (r > RADIUS - ABSORB_W)
+        {
             int dist = r - (RADIUS - ABSORB_W);
+
             if (dist >= ABSORB_W)
                 u_new = 0;
             else
-                u_new >>= dist;
+                u_new >>= dist;  /* dist=1→50%, dist=2→25%, … */
         }
 
-        if (r >= RADIUS) u_new = 0;
-        if (u_new < 0) u_new = 0;
+        if (r >= RADIUS)
+            u_new = 0;
+
+        if (u_new < 0)
+            u_new = 0;
 
         /* Bresenham trigger */
         int acc = grid[x][y][z].acc + grid[x][y][z].sinc_p;
+
         int triggered = 0;
-        if (acc >= grid[x][y][z].sinc_q && grid[x][y][z].sinc_q > 0) {
+
+        if (acc >= grid[x][y][z].sinc_q &&
+            grid[x][y][z].sinc_q > 0)
+        {
             acc -= grid[x][y][z].sinc_q;
             triggered = 1;
         }
 
+        /* ---------------------------
+           TTL persistence
+           --------------------------- */
+
+        unsigned char ttl = grid[x][y][z].ttl;
+
+        if ((tick & TTL_DECAY_MASK) == 0 && ttl > 0)
+            ttl--;
+
         /* AND interaction: Bresenham trigger × pulsating active */
-        unsigned char ttl = 0;
-        if (triggered && grid[x][y][z].active) {
-            ttl = 255;
-            int rr = grid[x][y][z].r;
-            if (rr >= 0 && rr < L)
-                current_shell_hits[rr]++;
+        if (triggered && grid[x][y][z].active)
+        {
+            ttl = 32 + ((223 * grid[x][y][z].sinc_p) /
+                        grid[x][y][z].sinc_q);
         }
 
         grid_next[x][y][z].u      = u_new;
@@ -151,13 +183,19 @@ void sinc_step(void) {
     }
 
     /* copy back with global damping */
+
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
-    for (int z = 0; z < L; z++) {
+    for (int z = 0; z < L; z++)
+    {
         grid[x][y][z].u =
-            grid_next[x][y][z].u - (grid_next[x][y][z].u >> 12);
+            grid_next[x][y][z].u -
+            (grid_next[x][y][z].u >> 12);
+
         grid[x][y][z].v =
-            grid_next[x][y][z].v - (grid_next[x][y][z].v >> 12);
+            grid_next[x][y][z].v -
+            (grid_next[x][y][z].v >> 12);
+
         grid[x][y][z].acc    = grid_next[x][y][z].acc;
         grid[x][y][z].sinc_p = grid_next[x][y][z].sinc_p;
         grid[x][y][z].sinc_q = grid_next[x][y][z].sinc_q;
@@ -167,7 +205,7 @@ void sinc_step(void) {
 }
 
 /* ==========================================================
- * Pulsating wavefront CA
+ * Pulsating wavefront CA — deterministic pulse threshold
  * ========================================================== */
 unsigned int pulse_from_time(unsigned int t) {
     const unsigned int min_r2 = 0;
@@ -183,7 +221,11 @@ unsigned int pulse_from_time(unsigned int t) {
         return max_r2 - (phase - span);
 }
 
+/* ==========================================================
+ * Pulsating wavefront CA — one tick
+ * ========================================================== */
 static void pulse_update_wavefront(void) {
+    /* copy current r2 into grid_next */
     for (int x = 0; x < L; x++)
     for (int y = 0; y < L; y++)
     for (int z = 0; z < L; z++)
@@ -248,7 +290,9 @@ void pulse_step(void) {
         if (r2 == INF_R2) {
             grid[x][y][z].active = 0;
         } else {
-            unsigned int d = (r2 > pulse_r2) ? (r2 - pulse_r2) : (pulse_r2 - r2);
+            unsigned int d = (r2 > pulse_r2)
+                           ? (r2 - pulse_r2)
+                           : (pulse_r2 - r2);
             grid[x][y][z].active = (d <= PULSE_TOLERANCE) ? 1 : 0;
         }
     }
@@ -268,7 +312,6 @@ static int  peak_idx = 0;
 static int  sinc_stable_frames = 0;
 static int  sinc_converged = 0;
 static long u_peak = 0;
-static float radial_trace[L];
 
 static void compute_profile(void) {
     for (int i = 0; i < L; i++) {
@@ -307,7 +350,6 @@ void render_frame(SDL_Renderer *ren) {
     SDL_RenderClear(ren);
 
     compute_profile();
-
     long max_change = profile_max_change();
 
     /* detect sinc convergence → set rationals */
@@ -345,6 +387,7 @@ void render_frame(SDL_Renderer *ren) {
      * ------------------------------------------------------- */
     {
         int cz = MID;
+        /* find max displacement in this slice for normalization */
         int slice_max = 1;
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++) {
@@ -364,6 +407,7 @@ void render_frame(SDL_Renderer *ren) {
 
     /* -------------------------------------------------------
      * Top-middle: trigger + wavefront combined (z = MID)
+     * Shows: green=distance, yellow=shell, cyan=trigger, red=fired
      * ------------------------------------------------------- */
     {
         int ox = 30 + L + 20;
@@ -374,16 +418,20 @@ void render_frame(SDL_Renderer *ren) {
             Cell *c = &grid[x][y][MID];
             uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
 
+            /* layer 1: wavefront distance (green gradient) */
             if (c->r2 != INF_R2) {
                 int rr = isqrt((int)c->r2);
                 int g = (rr < RADIUS) ? 255 - (rr * 255 / RADIUS) : 0;
                 pix_g = (uint32_t)g;
             }
 
-            int delta = (int)c->r2 - (int)pulse_thr;
-            if (delta < 0) delta = -delta;
-            if (delta <= YELLOW_VIS_TOL) {
-                pix_r = 255; pix_g = 255; pix_b = 0;
+            /* layer 2: wavefront shell (yellow ring, tight visual band) */
+            {
+                int delta = (int)c->r2 - (int)pulse_thr;
+                if (delta < 0) delta = -delta;
+                if (delta <= YELLOW_VIS_TOL) {
+                    pix_r = 255; pix_g = 255; pix_b = 0;
+                }
             }
 
             SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
@@ -405,13 +453,22 @@ void render_frame(SDL_Renderer *ren) {
             uint32_t pix_g = c->ttl >> 1;
             uint32_t pix_b = 0;
 
-            SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
-            SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
+            SDL_SetRenderDrawColor(
+                ren,
+                (Uint8)pix_r,
+                (Uint8)pix_g,
+                (Uint8)pix_b,
+                255);
+
+            SDL_RenderPoint(
+                ren,
+                (float)(x + ox),
+                (float)(y + 10));
         }
     }
-
     /* -------------------------------------------------------
      * Top-far-right: triggering cut (z = MID)
+     * Shows cyan dot where Bresenham triggered this tick
      * ------------------------------------------------------- */
     {
         int ox = 30 + L + 20 + L + 20 + L + 20;
@@ -419,14 +476,24 @@ void render_frame(SDL_Renderer *ren) {
         for (int x = 0; x < L; x++)
         for (int y = 0; y < L; y++) {
             Cell *c = &grid[x][y][MID];
+
             uint32_t pix_r = 0, pix_g = 0, pix_b = 0;
 
             if (c->trig) {
                 pix_r = 0; pix_g = 255; pix_b = 255;
             }
 
-            SDL_SetRenderDrawColor(ren, (Uint8)pix_r, (Uint8)pix_g, (Uint8)pix_b, 255);
-            SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
+            SDL_SetRenderDrawColor(
+                ren,
+                (Uint8)pix_r,
+                (Uint8)pix_g,
+                (Uint8)pix_b,
+                255);
+
+            SDL_RenderPoint(
+                ren,
+                (float)(x + ox),
+                (float)(y + 10));
         }
     }
 
@@ -437,12 +504,12 @@ void render_frame(SDL_Renderer *ren) {
     int py0 = WINDOW_H - 40;
     int graph_w = RADIUS * GRAPH_SCALE_X;
 
-    /* eixo */
+    /* axis */
     SDL_SetRenderDrawColor(ren, 80, 80, 80, 255);
     SDL_RenderLine(ren, (float)px0, (float)py0,
                    (float)(px0 + graph_w), (float)py0);
 
-    /* verde: perfil sinc(r) */
+    /* green: sinc(r) profile */
     SDL_SetRenderDrawColor(ren, 0, 255, 0, 255);
     {
         float gpx = -1, gpy = -1;
@@ -458,7 +525,7 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
-    /* amarelo: histórico de picos */
+    /* yellow: peak history */
     SDL_SetRenderDrawColor(ren, 255, 255, 0, 255);
     {
         int max_val = 1;
@@ -480,7 +547,7 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
-    /* ciano: taxa de disparo (após convergência) */
+    /* cyan: trigger rate (after convergence) */
     if (sinc_converged) {
         SDL_SetRenderDrawColor(ren, 0, 200, 255, 255);
         float cpx = -1, cpy = -1;
@@ -494,40 +561,91 @@ void render_frame(SDL_Renderer *ren) {
             cpy = yf;
         }
     }
-    /* vermelho: curva persistente (hits acumulados, normalizada) */
-    SDL_SetRenderDrawColor(ren, 255, 0, 0, 255);
-    {
-        float max_trace = 0.0f;
-        for (int r = 0; r < RADIUS; r++) {
-            radial_trace[r] += current_shell_hits[r];
-            if (radial_trace[r] > max_trace)
-                max_trace = radial_trace[r];
-        }
-        if (max_trace < 1e-6f) max_trace = 1.0f;
 
-        float rpx = -1, rpy = -1;
+    /* red: radial profile of total TTL per shell (AND of trigger × geometry) */
+    {
+        long ttl_sum[L];
+
+        memset(ttl_sum, 0, sizeof(ttl_sum));
+
+        for (int x = 0; x < L; x++)
+        for (int y = 0; y < L; y++)
+        for (int z = 0; z < L; z++) {
+            if (grid[x][y][z].r2 == INF_R2) continue;
+            int r = grid[x][y][z].r;
+
+            if (r < L) {
+                ttl_sum[r] += grid[x][y][z].ttl;
+            }
+        }
+
+        float smoothed[L];
+
         for (int r = 0; r < RADIUS; r++) {
-            float yf = (float)py0 -
-                       (radial_trace[r] / max_trace) * (float)GRAPH_HEIGHT;
-            float xf = (float)px0 + (float)(r * GRAPH_SCALE_X);
-            if (rpx >= 0)
-                SDL_RenderLine(ren, rpx, rpy, xf, yf);
-            rpx = xf;
-            rpy = yf;
+            float sum = 0.0f;
+            int count = 0;
+
+            for (int k = r - SMOOTH_W;
+                     k <= r + SMOOTH_W;
+                     k++)
+            {
+                if (k >= 0 && k < RADIUS)
+                {
+                    sum += (float)ttl_sum[k];
+                    count++;
+                }
+            }
+
+            smoothed[r] =
+                (count > 0)
+                ? sum / (float)count
+                : 0.0f;
+        }
+
+        float max_density = 0.0f;
+
+        for (int r = 0; r < RADIUS; r++)
+            if (smoothed[r] > max_density)
+                max_density = smoothed[r];
+
+        if (max_density < 1e-6f)
+            max_density = 1.0f;
+
+        SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
+
+        float fpx = -1.0f;
+        float fpy = -1.0f;
+
+        for (int r = 0; r < RADIUS; r++) {
+
+            float yf =
+                (float)py0 -
+                (smoothed[r] / max_density) *
+                (float)GRAPH_HEIGHT;
+
+            float xf =
+                (float)px0 +
+                (float)(r * GRAPH_SCALE_X);
+
+            if (fpx >= 0)
+                SDL_RenderLine(
+                    ren,
+                    fpx, fpy,
+                    xf,  yf);
+
+            fpx = xf;
+            fpy = yf;
         }
     }
-
-    /* marcador da casca */
-    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-    int shell_x = px0 + SHELL_R * GRAPH_SCALE_X;
-    SDL_RenderLine(ren, (float)shell_x, (float)(py0 - GRAPH_HEIGHT),
-                   (float)shell_x, (float)py0);
+    printf("\r[tick %4d] peak=%d stable=%d converged=%d  ",
+           tick, peak, sinc_stable_frames, sinc_converged);
+    fflush(stdout);
 
     SDL_RenderPresent(ren);
 }
 
 /* ==========================================================
- * Unified step — sinc wave + pulsating wavefront
+ * Unified step — pulsating wavefront first, then sinc wave
  * ========================================================== */
 void step_all(void) {
     pulse_step();   /* BFS + active flags first */
@@ -571,6 +689,7 @@ int main(void) {
     memset(grid,      0, sizeof(Cell) * L * L * L);
     memset(grid_next, 0, sizeof(Cell) * L * L * L);
 
+    /* unified initialization (sinc wave + pulsating wavefront) */
     init();
 
     int running = 1;
@@ -581,6 +700,7 @@ int main(void) {
         }
 
         step_all();
+
         render_frame(renderer);
         SDL_Delay(16);
     }
@@ -592,4 +712,3 @@ int main(void) {
     SDL_Quit();
     return 0;
 }
-#endif
