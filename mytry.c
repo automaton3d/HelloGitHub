@@ -590,7 +590,7 @@ void render_frame(SDL_Renderer *ren) {
 
         if (max_count < 1) max_count = 1;
 
-        SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
+        SDL_SetRenderDrawColor(ren, 255, 0, 0, 255);
 
         for (int r = 0; r < RADIUS; r++) {
             if (and_count[r] == 0) continue;
@@ -604,11 +604,18 @@ void render_frame(SDL_Renderer *ren) {
                 (float)px0 +
                 (float)(r * GRAPH_SCALE_X);
 
-            SDL_RenderPoint(ren, xf, yf);
+            /* 3×3 dot for visibility */
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    SDL_RenderPoint(ren, xf + dx, yf + dy);
         }
     }
-    printf("\r[tick %4d] peak=%d stable=%d converged=%d  ",
-           tick, peak, sinc_stable_frames, sinc_converged);
+    {
+        unsigned int pr2 = pulse_from_time((unsigned int)tick);
+        int cr = isqrt((int)pr2);
+        printf("\r[tick %4d] peak=%d stable=%d converged=%d r=%d  ",
+               tick, peak, sinc_stable_frames, sinc_converged, cr);
+    }
     fflush(stdout);
 
     SDL_RenderPresent(ren);
