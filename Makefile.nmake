@@ -1,60 +1,39 @@
-# Makefile.nmake — build the CA with CUDA acceleration (MSVC + nvcc)
+# Makefile.nmake — build the CA (MSVC + nvcc via nmake)
 #
 # Usage:
-#   nmake /f Makefile.nmake                         # build
-#   nmake /f Makefile.nmake clean                   # remove artefacts
-#
-# Override SDL3 paths if needed:
-#   nmake /f Makefile.nmake SDL_INC=C:\SDL3\include SDL_LIB=C:\SDL3\lib
-#
-# CPU-only build (no CUDA):
-#   nmake /f Makefile.nmake CPU_ONLY=1
+#   nmake /f Makefile.nmake              # CUDA build
+#   nmake /f Makefile.nmake CPU_ONLY=1   # CPU-only build
+#   nmake /f Makefile.nmake clean
 
-# --- SDL3 paths (adjust to your installation) ---
-SDL_INC = C:\SDL3\include
-SDL_LIB = C:\SDL3\lib
+CC     = cl
+NVCC   = nvcc
+CFLAGS = /Ox /W3
 
-# --- toolchain ---
-CC   = cl
-NVCC = nvcc
-LINK = link
+SDL_INC = /I"E:\vcpkg\installed\x64-windows\include"
+SDL_LIB = "E:\vcpkg\installed\x64-windows\lib\SDL3.lib"
 
-TARGET = mytry_cuda.exe
-
-# --- flags ---
-CFLAGS   = /nologo /O2 /W3 /DUSE_CUDA /I"$(SDL_INC)"
 NVCFLAGS = -O2 -DNO_SDL -DUSE_CUDA
-LDFLAGS  = /nologo /LIBPATH:"$(SDL_LIB)" SDL3.lib cudart.lib
-
-!IF DEFINED(CPU_ONLY)
-TARGET   = mytry_cpu.exe
-CFLAGS   = /nologo /O2 /W3 /I"$(SDL_INC)"
-!ENDIF
-
-# --- targets ---
-all: $(TARGET)
 
 !IF DEFINED(CPU_ONLY)
 
-mytry_cpu.obj: mytry.c pulsating.h
-	$(CC) /c $(CFLAGS) mytry.c /Fo"mytry_cpu.obj"
+# --- CPU-only build (no CUDA) ---
+all: mytry.exe
 
-$(TARGET): mytry_cpu.obj
-	$(LINK) mytry_cpu.obj /OUT:$(TARGET) /nologo /LIBPATH:"$(SDL_LIB)" SDL3.lib
+mytry.exe: mytry.c pulsating.h
+	$(CC) $(CFLAGS) /Fe:mytry.exe mytry.c $(SDL_INC) $(SDL_LIB)
 
 !ELSE
+
+# --- CUDA build ---
+all: mytry_cuda.exe
 
 ca_cuda.obj: ca_cuda.cu ca_cuda.h pulsating.h
 	$(NVCC) -c $(NVCFLAGS) ca_cuda.cu -o ca_cuda.obj
 
-mytry.obj: mytry.c pulsating.h ca_cuda.h
-	$(CC) /c $(CFLAGS) mytry.c /Fo"mytry.obj"
-
-$(TARGET): mytry.obj ca_cuda.obj
-	$(LINK) mytry.obj ca_cuda.obj /OUT:$(TARGET) $(LDFLAGS)
+mytry_cuda.exe: mytry.c pulsating.h ca_cuda.h ca_cuda.obj
+	$(CC) $(CFLAGS) /DUSE_CUDA /Fe:mytry_cuda.exe mytry.c ca_cuda.obj $(SDL_INC) $(SDL_LIB) cudart.lib
 
 !ENDIF
 
 clean:
-	-del /q *.obj *.exe *.exp *.lib 2>nul
-
+	-del /q *.obj *.exe 2>nul
