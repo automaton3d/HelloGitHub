@@ -87,6 +87,8 @@ void init(void) {
  * ========================================================== */
 void sinc_step(void)
 {
+    int cur_sweep_r = isqrt((int)pulse_from_time((unsigned int)tick));
+
     for (int x = 1; x < L-1; x++)
     for (int y = 1; y < L-1; y++)
     for (int z = 1; z < L-1; z++)
@@ -174,7 +176,7 @@ void sinc_step(void)
             ttl = 32 + ((223 * grid[x][y][z].sinc_p) /
                         grid[x][y][z].sinc_q);
             int rr = grid[x][y][z].r;
-            if (rr >= 0 && rr < L)
+            if (rr >= 0 && rr < L && rr == cur_sweep_r)
                 and_count[rr]++;
         }
 
@@ -579,7 +581,7 @@ void render_frame(SDL_Renderer *ren) {
         }
     }
 
-    /* red: AND-ed point count per shell radius (accumulated) */
+    /* red: AND-ed point count per shell radius (scatter plot) */
     {
         long max_count = 0;
         for (int r = 0; r < RADIUS; r++)
@@ -590,10 +592,9 @@ void render_frame(SDL_Renderer *ren) {
 
         SDL_SetRenderDrawColor(ren, 255, 60, 60, 255);
 
-        float fpx = -1.0f;
-        float fpy = -1.0f;
-
         for (int r = 0; r < RADIUS; r++) {
+            if (and_count[r] == 0) continue;
+
             float yf =
                 (float)py0 -
                 ((float)and_count[r] / (float)max_count) *
@@ -603,14 +604,7 @@ void render_frame(SDL_Renderer *ren) {
                 (float)px0 +
                 (float)(r * GRAPH_SCALE_X);
 
-            if (fpx >= 0)
-                SDL_RenderLine(
-                    ren,
-                    fpx, fpy,
-                    xf,  yf);
-
-            fpx = xf;
-            fpy = yf;
+            SDL_RenderPoint(ren, xf, yf);
         }
     }
     printf("\r[tick %4d] peak=%d stable=%d converged=%d  ",
