@@ -12,6 +12,8 @@ CFLAGS = /Ox /W3
 SDL_INC = /I"E:\vcpkg\installed\x64-windows\include"
 SDL_LIB = "E:\vcpkg\installed\x64-windows\lib\SDL3.lib"
 
+CUDA_LIB = /LIBPATH:"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\lib\x64"
+
 NVCFLAGS = -O2 -DNO_SDL -DUSE_CUDA
 
 !IF DEFINED(CPU_ONLY)
@@ -31,7 +33,7 @@ ca_cuda.obj: ca_cuda.cu ca_cuda.h pulsating.h
 	$(NVCC) -c $(NVCFLAGS) ca_cuda.cu -o ca_cuda.obj
 
 mytry_cuda.exe: mytry.c pulsating.h ca_cuda.h ca_cuda.obj
-	$(CC) $(CFLAGS) /DUSE_CUDA /Fe:mytry_cuda.exe mytry.c ca_cuda.obj $(SDL_INC) $(SDL_LIB) cudart.lib
+	$(CC) $(CFLAGS) /DUSE_CUDA /Fe:mytry_cuda.exe mytry.c ca_cuda.obj $(SDL_INC) $(SDL_LIB) /link $(CUDA_LIB) cudart.lib
 
 !ENDIF
 

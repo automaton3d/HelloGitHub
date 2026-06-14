@@ -8,8 +8,12 @@
  * Block size 8x8x8 = 512 threads; grid covers L^3 cells.
  */
 
+#ifndef NO_SDL
 #define NO_SDL
+#endif
+#ifndef USE_CUDA
 #define USE_CUDA
+#endif
 #include "pulsating.h"
 #include "ca_cuda.h"
 
