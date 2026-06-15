@@ -229,26 +229,16 @@ static void draw_spiral_line(int z, int sx, int sy) {
     int step_y = y0 < y1 ? 1 : -1;
     int err = dx - dy;
 
+    /* Walk the Bresenham line and track the LAST valid cell
+     * (closest to sphere surface).  Mark only that single cell.
+     * This guarantees exactly 1 spin point per z-level. */
+    int last_x = -1, last_y = -1;
+
     for (;;) {
-        /* mark this cell and neighbors within SPIRAL_W,
-         * but ONLY if cell is near sphere surface (r2 >= SPIRAL_R2_MIN).
-         * Using r2 (not r) ensures correct filtering at all z-levels. */
-        if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L) {
-            for (int w = -SPIRAL_W; w <= SPIRAL_W; w++) {
-                if (dx >= dy) {
-                    int yy = y0 + w;
-                    if (yy >= 0 && yy < L &&
-                        grid[x0][yy][z].r2 != INF_R2 &&
-                        grid[x0][yy][z].r2 >= SPIRAL_R2_MIN)
-                        grid[x0][yy][z].spin = 1;
-                } else {
-                    int xx = x0 + w;
-                    if (xx >= 0 && xx < L &&
-                        grid[xx][y0][z].r2 != INF_R2 &&
-                        grid[xx][y0][z].r2 >= SPIRAL_R2_MIN)
-                        grid[xx][y0][z].spin = 1;
-                }
-            }
+        if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
+            grid[x0][y0][z].r2 != INF_R2) {
+            last_x = x0;
+            last_y = y0;
         }
 
         if (x0 == x1 && y0 == y1) break;
@@ -257,6 +247,11 @@ static void draw_spiral_line(int z, int sx, int sy) {
         int e2 = err + err;
         if (e2 > -dy) { err -= dy; x0 += step_x; }
         if (e2 <  dx) { err += dx; y0 += step_y; }
+    }
+
+    /* Mark only the outermost reachable cell */
+    if (last_x >= 0) {
+        grid[last_x][last_y][z].spin = 1;
     }
 }
 
@@ -354,7 +349,7 @@ void render_frame(SDL_Renderer *ren) {
             int sy = grid[MID][MID][z].spiral_y;
             int dz = z - MID;
 
-            /* trace Bresenham line from center to (MID+sx, MID+sy) */
+            /* trace Bresenham line, find outermost valid cell */
             int x0 = MID, y0 = MID;
             int x1 = MID + sx, y1 = MID + sy;
             if (x1 < 0) x1 = 0; if (x1 >= L) x1 = L - 1;
@@ -365,36 +360,42 @@ void render_frame(SDL_Renderer *ren) {
             int step_x = x0 < x1 ? 1 : -1;
             int step_y = y0 < y1 ? 1 : -1;
             int err = ddx - ddy;
+            int last_x = -1, last_y = -1;
 
             for (;;) {
-                /* only render cells near sphere surface (helix) */
-                if (grid[x0][y0][z].r2 != INF_R2 &&
-                    grid[x0][y0][z].r2 >= SPIRAL_R2_MIN) {
-                    int ldx = x0 - MID;
-                    int ldy = y0 - MID;
-                    /* isometric projection */
-                    float px = cx + ((float)ldx - (float)ldy) * ax * scale;
-                    float py = cy - (float)dz * ez * scale
-                             + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
-
-                    /* color: white if active, cyan otherwise */
-                    if (grid[x0][y0][z].active) {
-                        SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-                    } else {
-                        /* depth cue: brighter near viewer */
-                        int bright = 150 + (ldx + ldy) / 4;
-                        if (bright > 255) bright = 255;
-                        if (bright < 80) bright = 80;
-                        SDL_SetRenderDrawColor(ren,
-                            0, (Uint8)bright, (Uint8)bright, 255);
-                    }
-                    SDL_RenderPoint(ren, px, py);
+                if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
+                    grid[x0][y0][z].r2 != INF_R2) {
+                    last_x = x0;
+                    last_y = y0;
                 }
-
                 if (x0 == x1 && y0 == y1) break;
                 int e2 = err + err;
                 if (e2 > -ddy) { err -= ddy; x0 += step_x; }
                 if (e2 <  ddx) { err += ddx; y0 += step_y; }
+            }
+
+            /* render only the outermost point (1 per z-level) */
+            if (last_x >= 0) {
+                int ldx = last_x - MID;
+                int ldy = last_y - MID;
+                float px = cx + ((float)ldx - (float)ldy) * ax * scale;
+                float py = cy - (float)dz * ez * scale
+                         + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
+
+                if (grid[last_x][last_y][z].active) {
+                    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+                } else {
+                    int bright = 150 + (ldx + ldy) / 4;
+                    if (bright > 255) bright = 255;
+                    if (bright < 80) bright = 80;
+                    SDL_SetRenderDrawColor(ren,
+                        0, (Uint8)bright, (Uint8)bright, 255);
+                }
+                /* draw 2x2 dot for visibility */
+                SDL_RenderPoint(ren, px, py);
+                SDL_RenderPoint(ren, px + 1.0f, py);
+                SDL_RenderPoint(ren, px, py + 1.0f);
+                SDL_RenderPoint(ren, px + 1.0f, py + 1.0f);
             }
         }
 
