@@ -23,8 +23,7 @@ Cell (*grid_next)[L][L] = NULL;
 
 int tick = 0;
 
-/* Track which z-levels have been spiral-marked */
-static unsigned char z_marked[L];
+
 
 /* ==========================================================
  * Initialization
@@ -59,7 +58,7 @@ void init(void) {
     grid[MID][MID][MID].spiral_y = 0;
     grid[MID][MID][MID].spiral_acc = 0;
 
-    memset(z_marked, 0, sizeof(z_marked));
+
 }
 
 /* ==========================================================
@@ -257,12 +256,14 @@ static void draw_spiral_line(int z, int sx, int sy) {
 }
 
 void spiral_step(void) {
-    /* incrementally mark z-levels as they become reachable */
+    /* Redraw spiral lines every tick.
+     * As BFS expands, new cells along each line become reachable
+     * (r2 != INF_R2) and get marked spin=1.  Cells already marked
+     * are just re-marked (idempotent).  Cost: O(L * RADIUS) per tick,
+     * negligible vs the O(L^3) BFS step. */
     for (int z = 0; z < L; z++) {
-        if (z_marked[z]) continue;
         if (grid[MID][MID][z].r2 == INF_R2) continue;
 
-        z_marked[z] = 1;
         int sx = grid[MID][MID][z].spiral_x;
         int sy = grid[MID][MID][z].spiral_y;
         draw_spiral_line(z, sx, sy);
