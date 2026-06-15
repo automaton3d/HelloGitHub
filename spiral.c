@@ -229,19 +229,27 @@ static void draw_spiral_line(int z, int sx, int sy) {
     int step_y = y0 < y1 ? 1 : -1;
     int err = dx - dy;
 
+    /* Threshold: only mark cells near the sphere surface.
+     * This creates a helix (line on surface) instead of a blade. */
+    int r_min = RADIUS - SPIRAL_W - SPIRAL_W;
+    if (r_min < 0) r_min = 0;
+
     for (;;) {
-        /* mark this cell and neighbors within SPIRAL_W */
+        /* mark this cell and neighbors within SPIRAL_W,
+         * but ONLY if cell is near sphere surface (r >= r_min) */
         if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L) {
             for (int w = -SPIRAL_W; w <= SPIRAL_W; w++) {
                 if (dx >= dy) {
                     int yy = y0 + w;
                     if (yy >= 0 && yy < L &&
-                        grid[x0][yy][z].r2 != INF_R2)
+                        grid[x0][yy][z].r2 != INF_R2 &&
+                        grid[x0][yy][z].r >= r_min)
                         grid[x0][yy][z].spin = 1;
                 } else {
                     int xx = x0 + w;
                     if (xx >= 0 && xx < L &&
-                        grid[xx][y0][z].r2 != INF_R2)
+                        grid[xx][y0][z].r2 != INF_R2 &&
+                        grid[xx][y0][z].r >= r_min)
                         grid[xx][y0][z].spin = 1;
                 }
             }
@@ -362,9 +370,13 @@ void render_frame(SDL_Renderer *ren) {
             int step_y = y0 < y1 ? 1 : -1;
             int err = ddx - ddy;
 
+            int r_min_iso = RADIUS - SPIRAL_W - SPIRAL_W;
+            if (r_min_iso < 0) r_min_iso = 0;
+
             for (;;) {
-                /* only render if cell is within sphere */
-                if (grid[x0][y0][z].r2 != INF_R2) {
+                /* only render cells near sphere surface (helix) */
+                if (grid[x0][y0][z].r2 != INF_R2 &&
+                    grid[x0][y0][z].r >= r_min_iso) {
                     int ldx = x0 - MID;
                     int ldy = y0 - MID;
                     /* isometric projection */
