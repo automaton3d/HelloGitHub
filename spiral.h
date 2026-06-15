@@ -81,6 +81,11 @@
 /* Spiral arm width in cells (constant regardless of L) */
 #define SPIRAL_W 2
 
+/* Minimum r2 for spiral marking — cells must be near sphere surface.
+ * Only cells with r2 >= SPIRAL_R2_MIN get spin=1.
+ * This ensures constant-width helix regardless of z-level. */
+#define SPIRAL_R2_MIN  ((RADIUS - SPIRAL_W) * (RADIUS - SPIRAL_W))
+
 /* --- Display --- */
 #define WINDOW_W  (L + 500 + 80)
 #define WINDOW_H  (L + 280)
