@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /* --- Grid allocation (heap, too large for stack) --- */
 Cell (*grid)[L][L]      = NULL;
@@ -426,14 +427,8 @@ void render_frame(SDL_Renderer *ren) {
             SDL_SetRenderDrawColor(ren, 60, 60, 60, 255);
             for (i = 0; i <= n_seg; i++) {
                 float angle = (float)i * 6.2832f / (float)n_seg;
-                /* Taylor sin/cos (host rendering only — floats OK) */
-                float a = angle;
-                float a2 = a * a;
-                float a3 = a2 * a;
-                float a4 = a2 * a2;
-                float a5 = a4 * a;
-                float ca = 1.0f - a2 * 0.5f + a4 * 0.0416667f;
-                float sa = a - a3 * 0.1666667f + a5 * 0.0083333f;
+                float ca = cosf(angle);
+                float sa = sinf(angle);
                 float wx = (float)RADIUS * ca;
                 float wy = (float)RADIUS * sa;
                 /* project isometrically (dz=0 for equator) */
