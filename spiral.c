@@ -323,60 +323,79 @@ void render_frame(SDL_Renderer *ren) {
     }
 
     /* -------------------------------------------------------
-     * Panel 2 (top-middle): spin overlay at z=MID
-     *   cyan = spin=1, dim green = visited but spin=0
+     * Panel 2 (top-right, large): 3D isometric view of spiral
+     *   Re-traces Bresenham lines per z-level, projects each
+     *   point isometrically.  cyan = spin, white = spin+active.
      * ------------------------------------------------------- */
     {
-        int ox = 30 + L + 20;
-        for (int x = 0; x < L; x++)
-        for (int y = 0; y < L; y++) {
-            Cell *c = &grid[x][y][MID];
-            unsigned int pr = 0, pg = 0, pb = 0;
+        int panel_x = 30 + L + 40;
+        int panel_y = 10;
+        int panel_w = 480;
+        int panel_h = L;
+        float cx = (float)(panel_x + panel_w / 2);
+        float cy = (float)(panel_y + panel_h / 2);
+        /* scale to fit sphere in panel */
+        float scale = (float)panel_h / (2.8f * (float)R_MAX);
 
-            if (c->r2 != INF_R2) {
-                if (c->spin) {
-                    pr = 0; pg = 255; pb = 255;
-                } else {
-                    pg = 30;
-                }
-                /* highlight active shell on spiral */
-                if (c->spin && c->active) {
-                    pr = 255; pg = 255; pb = 255;
-                }
-            }
+        /* isometric projection coefficients:
+         * azimuth ≈ 30°, slight elevation to see z-axis */
+        float ax = 0.866f;   /* cos(30°) */
+        float ay = 0.5f;     /* sin(30°) */
+        float ez = 0.75f;    /* vertical z scale */
 
-            SDL_SetRenderDrawColor(ren,
-                (Uint8)pr, (Uint8)pg, (Uint8)pb, 255);
-            SDL_RenderPoint(ren, (float)(x + ox), (float)(y + 10));
-        }
-    }
-
-    /* -------------------------------------------------------
-     * Panel 3 (top-right): y=MID side view (xz plane)
-     *   shows spiral arm from the side
-     * ------------------------------------------------------- */
-    {
-        int ox = 30 + L + 20 + L + 20;
-        for (int x = 0; x < L; x++)
         for (int z = 0; z < L; z++) {
-            Cell *c = &grid[x][MID][z];
-            unsigned int pr = 0, pg = 0, pb = 0;
+            if (grid[MID][MID][z].r2 == INF_R2) continue;
+            int sx = grid[MID][MID][z].spiral_x;
+            int sy = grid[MID][MID][z].spiral_y;
+            int dz = z - MID;
 
-            if (c->r2 != INF_R2) {
-                if (c->spin) {
-                    pr = 0; pg = 255; pb = 255;
-                } else {
-                    pg = 30;
+            /* trace Bresenham line from center to (MID+sx, MID+sy) */
+            int x0 = MID, y0 = MID;
+            int x1 = MID + sx, y1 = MID + sy;
+            if (x1 < 0) x1 = 0; if (x1 >= L) x1 = L - 1;
+            if (y1 < 0) y1 = 0; if (y1 >= L) y1 = L - 1;
+
+            int ddx = x1 > x0 ? x1 - x0 : x0 - x1;
+            int ddy = y1 > y0 ? y1 - y0 : y0 - y1;
+            int step_x = x0 < x1 ? 1 : -1;
+            int step_y = y0 < y1 ? 1 : -1;
+            int err = ddx - ddy;
+
+            for (;;) {
+                /* only render if cell is within sphere */
+                if (grid[x0][y0][z].r2 != INF_R2) {
+                    int ldx = x0 - MID;
+                    int ldy = y0 - MID;
+                    /* isometric projection */
+                    float px = cx + ((float)ldx - (float)ldy) * ax * scale;
+                    float py = cy - (float)dz * ez * scale
+                             + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
+
+                    /* color: white if active, cyan otherwise */
+                    if (grid[x0][y0][z].active) {
+                        SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+                    } else {
+                        /* depth cue: brighter near viewer */
+                        int bright = 150 + (ldx + ldy) / 4;
+                        if (bright > 255) bright = 255;
+                        if (bright < 80) bright = 80;
+                        SDL_SetRenderDrawColor(ren,
+                            0, (Uint8)bright, (Uint8)bright, 255);
+                    }
+                    SDL_RenderPoint(ren, px, py);
                 }
-                if (c->spin && c->active) {
-                    pr = 255; pg = 255; pb = 255;
-                }
+
+                if (x0 == x1 && y0 == y1) break;
+                int e2 = err + err;
+                if (e2 > -ddy) { err -= ddy; x0 += step_x; }
+                if (e2 <  ddx) { err += ddx; y0 += step_y; }
             }
-
-            SDL_SetRenderDrawColor(ren,
-                (Uint8)pr, (Uint8)pg, (Uint8)pb, 255);
-            SDL_RenderPoint(ren, (float)(x + ox), (float)(z + 10));
         }
+
+        /* draw z-axis reference line (faint) */
+        SDL_SetRenderDrawColor(ren, 40, 40, 40, 255);
+        SDL_RenderLine(ren, cx, cy - (float)R_MAX * ez * scale,
+                       cx, cy + (float)R_MAX * ez * scale);
     }
 
     /* -------------------------------------------------------

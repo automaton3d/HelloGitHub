@@ -82,7 +82,7 @@
 #define SPIRAL_W 2
 
 /* --- Display --- */
-#define WINDOW_W  (L * 3 + 120)
+#define WINDOW_W  (L + 500 + 80)
 #define WINDOW_H  (L + 280)
 
 /* Yellow ring visual tolerance (thin) */
