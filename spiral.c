@@ -392,10 +392,60 @@ void render_frame(SDL_Renderer *ren) {
             }
         }
 
-        /* draw z-axis reference line (faint) */
-        SDL_SetRenderDrawColor(ren, 40, 40, 40, 255);
-        SDL_RenderLine(ren, cx, cy - (float)R_MAX * ez * scale,
-                       cx, cy + (float)R_MAX * ez * scale);
+        /* --- Coordinate axes (RGB = XYZ) --- */
+        {
+            float axis_len = (float)RADIUS * scale;
+
+            /* X axis (red): points right-front */
+            float x_end_px = cx + axis_len * ax;
+            float x_end_py = cy + axis_len * ay * 0.5f;
+            SDL_SetRenderDrawColor(ren, 180, 50, 50, 255);
+            SDL_RenderLine(ren, cx, cy, x_end_px, x_end_py);
+
+            /* Y axis (green): points left-front */
+            float y_end_px = cx - axis_len * ax;
+            float y_end_py = cy + axis_len * ay * 0.5f;
+            SDL_SetRenderDrawColor(ren, 50, 180, 50, 255);
+            SDL_RenderLine(ren, cx, cy, y_end_px, y_end_py);
+
+            /* Z axis (blue): points up */
+            float z_end_py = cy - (float)R_MAX * ez * scale;
+            SDL_SetRenderDrawColor(ren, 80, 80, 255, 255);
+            SDL_RenderLine(ren, cx, cy, cx, z_end_py);
+            /* also draw negative z */
+            float z_neg_py = cy + (float)R_MAX * ez * scale;
+            SDL_SetRenderDrawColor(ren, 40, 40, 120, 255);
+            SDL_RenderLine(ren, cx, cy, cx, z_neg_py);
+        }
+
+        /* --- Equatorial circle (cosmetic, z=MID plane) --- */
+        {
+            int n_seg = 64;
+            float prev_px = 0.0f, prev_py = 0.0f;
+            int i;
+            SDL_SetRenderDrawColor(ren, 60, 60, 60, 255);
+            for (i = 0; i <= n_seg; i++) {
+                float angle = (float)i * 6.2832f / (float)n_seg;
+                /* Taylor sin/cos (host rendering only — floats OK) */
+                float a = angle;
+                float a2 = a * a;
+                float a3 = a2 * a;
+                float a4 = a2 * a2;
+                float a5 = a4 * a;
+                float ca = 1.0f - a2 * 0.5f + a4 * 0.0416667f;
+                float sa = a - a3 * 0.1666667f + a5 * 0.0083333f;
+                float wx = (float)RADIUS * ca;
+                float wy = (float)RADIUS * sa;
+                /* project isometrically (dz=0 for equator) */
+                float ppx = cx + (wx - wy) * ax * scale;
+                float ppy = cy + (wx + wy) * ay * 0.5f * scale;
+                if (i > 0) {
+                    SDL_RenderLine(ren, prev_px, prev_py, ppx, ppy);
+                }
+                prev_px = ppx;
+                prev_py = ppy;
+            }
+        }
     }
 
     /* -------------------------------------------------------
