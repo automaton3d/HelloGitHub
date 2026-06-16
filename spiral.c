@@ -348,14 +348,14 @@ void render_frame(SDL_Renderer *ren) {
         int panel_h = L;
         float cx = (float)(panel_x + panel_w / 2);
         float cy = (float)(panel_y + panel_h / 2);
-        /* scale to fit sphere in panel */
-        float scale = (float)panel_h / (2.8f * (float)R_MAX);
+        /* scale to fit sphere in panel (true isometric: sphere radius = R_MAX on screen) */
+        float scale = (float)panel_h / (3.2f * (float)R_MAX);
 
         /* isometric projection coefficients:
          * azimuth ≈ 30°, slight elevation to see z-axis */
         float ax = 0.866f;   /* cos(30°) */
         float ay = 0.5f;     /* sin(30°) */
-        float ez = 0.90f;    /* vertical z scale (matches isometric xy magnitude) */
+        float ez = 1.0f;     /* vertical z scale (true isometric) */
 
         /* Re-trace the spiral curve (same logic as spiral_step)
          * and render each point isometrically. */
@@ -407,7 +407,7 @@ void render_frame(SDL_Renderer *ren) {
                         int dz = rz - MID;
                         float px = cx + ((float)ldx - (float)ldy) * ax * scale;
                         float py = cy - (float)dz * ez * scale
-                                 + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
+                                 + ((float)ldx + (float)ldy) * ay * scale;
 
                         if (grid[best_x][best_y][rz].active) {
                             SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
@@ -437,13 +437,13 @@ void render_frame(SDL_Renderer *ren) {
 
             /* X axis (red): points right-front */
             float x_end_px = cx + axis_len * ax;
-            float x_end_py = cy + axis_len * ay * 0.5f;
+            float x_end_py = cy + axis_len * ay;
             SDL_SetRenderDrawColor(ren, 180, 50, 50, 255);
             SDL_RenderLine(ren, cx, cy, x_end_px, x_end_py);
 
             /* Y axis (green): points left-front */
             float y_end_px = cx - axis_len * ax;
-            float y_end_py = cy + axis_len * ay * 0.5f;
+            float y_end_py = cy + axis_len * ay;
             SDL_SetRenderDrawColor(ren, 50, 180, 50, 255);
             SDL_RenderLine(ren, cx, cy, y_end_px, y_end_py);
 
@@ -472,7 +472,7 @@ void render_frame(SDL_Renderer *ren) {
                     float wx = R * cosf(angle);
                     float wy = R * sinf(angle);
                     float ppx = cx + (wx - wy) * ax * scale;
-                    float ppy = cy + (wx + wy) * ay * 0.5f * scale;
+                    float ppy = cy + (wx + wy) * ay * scale;
                     if (i > 0)
                         SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
                     prev_px2 = ppx;
@@ -490,7 +490,7 @@ void render_frame(SDL_Renderer *ren) {
                     float wz = R * cosf(t);
                     float ppx = cx + (wx - wy) * ax * scale;
                     float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * 0.5f * scale;
+                              + (wx + wy) * ay * scale;
                     if (i > 0)
                         SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
                     prev_px2 = ppx;
@@ -508,7 +508,7 @@ void render_frame(SDL_Renderer *ren) {
                     float wz = R * cosf(t);
                     float ppx = cx + (wx - wy) * ax * scale;
                     float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * 0.5f * scale;
+                              + (wx + wy) * ay * scale;
                     if (i > 0)
                         SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
                     prev_px2 = ppx;
@@ -528,7 +528,7 @@ void render_frame(SDL_Renderer *ren) {
                     float wz = R * cosf(t);
                     float ppx = cx + (wx - wy) * ax * scale;
                     float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * 0.5f * scale;
+                              + (wx + wy) * ay * scale;
                     if (i > 0)
                         SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
                     prev_px2 = ppx;
@@ -548,7 +548,7 @@ void render_frame(SDL_Renderer *ren) {
                     float wz = R * cosf(t);
                     float ppx = cx + (wx - wy) * ax * scale;
                     float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * 0.5f * scale;
+                              + (wx + wy) * ay * scale;
                     if (i > 0)
                         SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
                     prev_px2 = ppx;
