@@ -78,13 +78,11 @@
 /* pi * 2^k ≈ (314 << k) / 100  (compile-time integer arithmetic) */
 #define CORDIC_N  ((314 << CORDIC_SHIFT) / 100)
 
-/* Spiral arm width in cells (constant regardless of L) */
-#define SPIRAL_W 2
-
-/* Minimum r2 for spiral marking — cells must be near sphere surface.
- * Only cells with r2 >= SPIRAL_R2_MIN get spin=1.
- * This ensures constant-width helix regardless of z-level. */
-#define SPIRAL_R2_MIN  ((RADIUS - SPIRAL_W) * (RADIUS - SPIRAL_W))
+/* Spiral z-span: how many z-levels the spiral covers.
+ * Uses ~3/4 of RADIUS to keep xy_dist > 0 at all points,
+ * giving approximately 133° of CORDIC rotation for L=221.
+ * Formula: shift + subtract only. */
+#define SPIRAL_Z_SPAN  (RADIUS - (RADIUS >> 2))
 
 /* --- Display --- */
 #define WINDOW_W  (L + 500 + 80)

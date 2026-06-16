@@ -204,62 +204,83 @@ void pulse_step(void) {
 }
 
 /* ==========================================================
- * spiral_step — mark spin=1 using Bresenham lines
+ * spiral_step — mark spin=1 as a 1D spiral curve
  *
- * For each z-level newly reached by BFS (z-axis cell has
- * valid r2), trace a Bresenham line from (MID, MID) to
- * (MID + spiral_x, MID + spiral_y) at that z-level.
- * All cells along the line (within SPIRAL_W) get spin=1.
+ * Marks exactly ONE cell per integer radius r (0..RADIUS),
+ * forming a 3D spiral from center to surface.
  *
- * Bresenham line: only additions, subtractions, comparisons.
+ * For each r, a Bresenham accumulator assigns a z-level
+ * (distributing SPIRAL_Z_SPAN z-steps over RADIUS r-steps).
+ * At that z-level, we walk the Bresenham line in the CORDIC
+ * direction and find the cell whose radius matches r.
+ *
+ * Result: ~RADIUS cells total, 1 per radius shell.
+ * The expanding wavefront crosses the spiral at exactly 1 point.
+ *
+ * Operations: addition, subtraction, comparison (Bresenham walk).
  * ========================================================== */
-static void draw_spiral_line(int z, int sx, int sy) {
-    int x0 = MID, y0 = MID;
-    int x1 = MID + sx, y1 = MID + sy;
+void spiral_step(void) {
+    int z_acc = 0;
+    int cur_z = MID;
 
-    /* clamp endpoint to grid */
-    if (x1 < 0)   x1 = 0;
-    if (x1 >= L)   x1 = L - 1;
-    if (y1 < 0)   y1 = 0;
-    if (y1 >= L)   y1 = L - 1;
+    for (int r = 0; r <= RADIUS; r++) {
+        /* Skip if BFS hasn't reached this z-level yet */
+        if (cur_z < 0 || cur_z >= L) goto advance_z;
+        if (grid[MID][MID][cur_z].r2 == INF_R2) goto advance_z;
 
-    int dx = x1 > x0 ? x1 - x0 : x0 - x1;
-    int dy = y1 > y0 ? y1 - y0 : y0 - y1;
-    int step_x = x0 < x1 ? 1 : -1;
-    int step_y = y0 < y1 ? 1 : -1;
-    int err = dx - dy;
+        {
+            int sx = grid[MID][MID][cur_z].spiral_x;
+            int sy = grid[MID][MID][cur_z].spiral_y;
 
-    /* Mark ALL valid cells along the Bresenham line (1 cell wide).
-     * The line goes from center (MID,MID) to the sphere edge,
-     * covering all radii.  Any expanding wavefront (any radius)
-     * will cross this line at exactly 1 point per z-level. */
-    for (;;) {
-        if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
-            grid[x0][y0][z].r2 != INF_R2) {
-            grid[x0][y0][z].spin = 1;
+            /* Walk Bresenham line from (MID,MID) toward (MID+sx,MID+sy)
+             * and find the cell closest to radius r */
+            int x0 = MID, y0 = MID;
+            int x1 = MID + sx, y1 = MID + sy;
+            if (x1 < 0) x1 = 0;
+            if (x1 >= L) x1 = L - 1;
+            if (y1 < 0) y1 = 0;
+            if (y1 >= L) y1 = L - 1;
+
+            int dx = x1 > x0 ? x1 - x0 : x0 - x1;
+            int dy = y1 > y0 ? y1 - y0 : y0 - y1;
+            int step_x = x0 < x1 ? 1 : -1;
+            int step_y = y0 < y1 ? 1 : -1;
+            int err = dx - dy;
+
+            int best_x = -1, best_y = -1;
+            int best_diff = RADIUS + 1;
+
+            for (;;) {
+                if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
+                    grid[x0][y0][cur_z].r2 != INF_R2) {
+                    int cell_r = grid[x0][y0][cur_z].r;
+                    int diff = cell_r > r ? cell_r - r : r - cell_r;
+                    if (diff < best_diff) {
+                        best_diff = diff;
+                        best_x = x0;
+                        best_y = y0;
+                        if (diff == 0) break;
+                    }
+                }
+                if (x0 == x1 && y0 == y1) break;
+                int e2 = err + err;
+                if (e2 > -dy) { err -= dy; x0 += step_x; }
+                if (e2 <  dx) { err += dx; y0 += step_y; }
+            }
+
+            if (best_x >= 0) {
+                grid[best_x][best_y][cur_z].spin = 1;
+            }
         }
 
-        if (x0 == x1 && y0 == y1) break;
-
-        /* Bresenham step (additions only) */
-        int e2 = err + err;
-        if (e2 > -dy) { err -= dy; x0 += step_x; }
-        if (e2 <  dx) { err += dx; y0 += step_y; }
-    }
-}
-
-void spiral_step(void) {
-    /* Redraw spiral lines every tick.
-     * As BFS expands, new cells along each line become reachable
-     * (r2 != INF_R2) and get marked spin=1.  Cells already marked
-     * are just re-marked (idempotent).  Cost: O(L * RADIUS) per tick,
-     * negligible vs the O(L^3) BFS step. */
-    for (int z = 0; z < L; z++) {
-        if (grid[MID][MID][z].r2 == INF_R2) continue;
-
-        int sx = grid[MID][MID][z].spiral_x;
-        int sy = grid[MID][MID][z].spiral_y;
-        draw_spiral_line(z, sx, sy);
+    advance_z:
+        /* Bresenham accumulator: distribute SPIRAL_Z_SPAN z-steps
+         * over RADIUS r-steps */
+        z_acc += SPIRAL_Z_SPAN;
+        while (z_acc >= RADIUS) {
+            z_acc -= RADIUS;
+            cur_z++;
+        }
     }
 }
 
@@ -336,48 +357,77 @@ void render_frame(SDL_Renderer *ren) {
         float ay = 0.5f;     /* sin(30°) */
         float ez = 0.75f;    /* vertical z scale */
 
-        for (int z = 0; z < L; z++) {
-            if (grid[MID][MID][z].r2 == INF_R2) continue;
-            int sx = grid[MID][MID][z].spiral_x;
-            int sy = grid[MID][MID][z].spiral_y;
-            int dz = z - MID;
+        /* Re-trace the spiral curve (same logic as spiral_step)
+         * and render each point isometrically. */
+        {
+            int z_acc = 0;
+            int rz = MID;
+            for (int r = 0; r <= RADIUS; r++) {
+                if (rz >= 0 && rz < L &&
+                    grid[MID][MID][rz].r2 != INF_R2) {
+                    int sx = grid[MID][MID][rz].spiral_x;
+                    int sy = grid[MID][MID][rz].spiral_y;
 
-            /* trace full Bresenham line, render all valid cells */
-            int x0 = MID, y0 = MID;
-            int x1 = MID + sx, y1 = MID + sy;
-            if (x1 < 0) x1 = 0; if (x1 >= L) x1 = L - 1;
-            if (y1 < 0) y1 = 0; if (y1 >= L) y1 = L - 1;
+                    int x0 = MID, y0 = MID;
+                    int x1 = MID + sx, y1 = MID + sy;
+                    if (x1 < 0) x1 = 0;
+                    if (x1 >= L) x1 = L - 1;
+                    if (y1 < 0) y1 = 0;
+                    if (y1 >= L) y1 = L - 1;
 
-            int ddx = x1 > x0 ? x1 - x0 : x0 - x1;
-            int ddy = y1 > y0 ? y1 - y0 : y0 - y1;
-            int step_x = x0 < x1 ? 1 : -1;
-            int step_y = y0 < y1 ? 1 : -1;
-            int err = ddx - ddy;
+                    int ddx = x1 > x0 ? x1 - x0 : x0 - x1;
+                    int ddy = y1 > y0 ? y1 - y0 : y0 - y1;
+                    int step_x = x0 < x1 ? 1 : -1;
+                    int step_y = y0 < y1 ? 1 : -1;
+                    int err = ddx - ddy;
+                    int best_x = -1, best_y = -1;
+                    int best_diff = RADIUS + 1;
 
-            for (;;) {
-                if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
-                    grid[x0][y0][z].r2 != INF_R2) {
-                    int ldx = x0 - MID;
-                    int ldy = y0 - MID;
-                    float px = cx + ((float)ldx - (float)ldy) * ax * scale;
-                    float py = cy - (float)dz * ez * scale
-                             + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
-
-                    if (grid[x0][y0][z].active) {
-                        SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-                    } else {
-                        int bright = 150 + (ldx + ldy) / 4;
-                        if (bright > 255) bright = 255;
-                        if (bright < 80) bright = 80;
-                        SDL_SetRenderDrawColor(ren,
-                            0, (Uint8)bright, (Uint8)bright, 255);
+                    for (;;) {
+                        if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
+                            grid[x0][y0][rz].r2 != INF_R2) {
+                            int cell_r = grid[x0][y0][rz].r;
+                            int diff = cell_r > r ? cell_r - r : r - cell_r;
+                            if (diff < best_diff) {
+                                best_diff = diff;
+                                best_x = x0;
+                                best_y = y0;
+                                if (diff == 0) break;
+                            }
+                        }
+                        if (x0 == x1 && y0 == y1) break;
+                        int e2 = err + err;
+                        if (e2 > -ddy) { err -= ddy; x0 += step_x; }
+                        if (e2 <  ddx) { err += ddx; y0 += step_y; }
                     }
-                    SDL_RenderPoint(ren, px, py);
+
+                    if (best_x >= 0) {
+                        int ldx = best_x - MID;
+                        int ldy = best_y - MID;
+                        int dz = rz - MID;
+                        float px = cx + ((float)ldx - (float)ldy) * ax * scale;
+                        float py = cy - (float)dz * ez * scale
+                                 + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
+
+                        if (grid[best_x][best_y][rz].active) {
+                            SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+                        } else {
+                            int bright = 150 + (ldx + ldy) / 4;
+                            if (bright > 255) bright = 255;
+                            if (bright < 80) bright = 80;
+                            SDL_SetRenderDrawColor(ren,
+                                0, (Uint8)bright, (Uint8)bright, 255);
+                        }
+                        /* 2x2 pixel for visibility */
+                        SDL_FRect rc = { px - 1, py - 1, 3, 3 };
+                        SDL_RenderFillRect(ren, &rc);
+                    }
                 }
-                if (x0 == x1 && y0 == y1) break;
-                int e2 = err + err;
-                if (e2 > -ddy) { err -= ddy; x0 += step_x; }
-                if (e2 <  ddx) { err += ddx; y0 += step_y; }
+                z_acc += SPIRAL_Z_SPAN;
+                while (z_acc >= RADIUS) {
+                    z_acc -= RADIUS;
+                    rz++;
+                }
             }
         }
 
