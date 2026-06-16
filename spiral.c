@@ -482,6 +482,125 @@ void render_frame(SDL_Renderer *ren) {
     }
 
     /* -------------------------------------------------------
+     * Panel 3 (bottom-right): XY top-view of spiral
+     *   Shows spiral points projected onto XY plane (ignoring z).
+     *   Cyan = spin, white = spin+active, gray circle = wavefront.
+     * ------------------------------------------------------- */
+    {
+        int tp_x = 30 + L + 40;
+        int tp_y = L + 30;
+        int tp_sz = 200;   /* square panel */
+        float tp_scale = (float)tp_sz / (2.2f * (float)RADIUS);
+        float tp_cx = (float)tp_x + (float)tp_sz * 0.5f;
+        float tp_cy = (float)tp_y + (float)tp_sz * 0.5f;
+
+        /* Draw wavefront circle (current radius) */
+        {
+            int n_seg = 48;
+            float prev_px2 = 0.0f, prev_py2 = 0.0f;
+            SDL_SetRenderDrawColor(ren, 60, 60, 0, 255);
+            for (int i = 0; i <= n_seg; i++) {
+                float angle = (float)i * 6.2832f / (float)n_seg;
+                float px2 = tp_cx + (float)cur_r * cosf(angle) * tp_scale;
+                float py2 = tp_cy + (float)cur_r * sinf(angle) * tp_scale;
+                if (i > 0) {
+                    SDL_RenderLine(ren, prev_px2, prev_py2, px2, py2);
+                }
+                prev_px2 = px2;
+                prev_py2 = py2;
+            }
+        }
+
+        /* Draw outer boundary circle */
+        {
+            int n_seg = 48;
+            float prev_px2 = 0.0f, prev_py2 = 0.0f;
+            SDL_SetRenderDrawColor(ren, 40, 40, 40, 255);
+            for (int i = 0; i <= n_seg; i++) {
+                float angle = (float)i * 6.2832f / (float)n_seg;
+                float px2 = tp_cx + (float)RADIUS * cosf(angle) * tp_scale;
+                float py2 = tp_cy + (float)RADIUS * sinf(angle) * tp_scale;
+                if (i > 0) {
+                    SDL_RenderLine(ren, prev_px2, prev_py2, px2, py2);
+                }
+                prev_px2 = px2;
+                prev_py2 = py2;
+            }
+        }
+
+        /* Draw spiral points (XY projection) */
+        {
+            int z_acc2 = 0;
+            int rz2 = MID;
+            for (int r = 0; r <= RADIUS; r++) {
+                if (rz2 >= 0 && rz2 < L &&
+                    grid[MID][MID][rz2].r2 != INF_R2) {
+                    int sx = grid[MID][MID][rz2].spiral_x;
+                    int sy = grid[MID][MID][rz2].spiral_y;
+
+                    int x0 = MID, y0 = MID;
+                    int x1 = MID + sx, y1 = MID + sy;
+                    if (x1 < 0) x1 = 0;
+                    if (x1 >= L) x1 = L - 1;
+                    if (y1 < 0) y1 = 0;
+                    if (y1 >= L) y1 = L - 1;
+
+                    int ddx = x1 > x0 ? x1 - x0 : x0 - x1;
+                    int ddy = y1 > y0 ? y1 - y0 : y0 - y1;
+                    int step_x = x0 < x1 ? 1 : -1;
+                    int step_y = y0 < y1 ? 1 : -1;
+                    int err = ddx - ddy;
+                    int best_x2 = -1, best_y2 = -1;
+                    int best_diff2 = RADIUS + 1;
+
+                    for (;;) {
+                        if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
+                            grid[x0][y0][rz2].r2 != INF_R2) {
+                            int cell_r = grid[x0][y0][rz2].r;
+                            int diff = cell_r > r ? cell_r - r : r - cell_r;
+                            if (diff < best_diff2) {
+                                best_diff2 = diff;
+                                best_x2 = x0;
+                                best_y2 = y0;
+                                if (diff == 0) break;
+                            }
+                        }
+                        if (x0 == x1 && y0 == y1) break;
+                        int e2 = err + err;
+                        if (e2 > -ddy) { err -= ddy; x0 += step_x; }
+                        if (e2 <  ddx) { err += ddx; y0 += step_y; }
+                    }
+
+                    if (best_x2 >= 0) {
+                        float px2 = tp_cx + (float)(best_x2 - MID) * tp_scale;
+                        float py2 = tp_cy + (float)(best_y2 - MID) * tp_scale;
+
+                        if (grid[best_x2][best_y2][rz2].active) {
+                            SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+                            SDL_FRect rc = { px2 - 2, py2 - 2, 5, 5 };
+                            SDL_RenderFillRect(ren, &rc);
+                        } else {
+                            SDL_SetRenderDrawColor(ren, 0, 200, 200, 255);
+                            SDL_FRect rc = { px2 - 1, py2 - 1, 3, 3 };
+                            SDL_RenderFillRect(ren, &rc);
+                        }
+                    }
+                }
+                z_acc2 += SPIRAL_Z_SPAN;
+                while (z_acc2 >= RADIUS) {
+                    z_acc2 -= RADIUS;
+                    rz2++;
+                }
+            }
+        }
+
+        /* Cross-hair at center */
+        SDL_SetRenderDrawColor(ren, 50, 50, 50, 255);
+        SDL_RenderLine(ren, tp_cx - 5, tp_cy, tp_cx + 5, tp_cy);
+        SDL_RenderLine(ren, tp_cx, tp_cy - 5, tp_cx, tp_cy + 5);
+    }
+
+    /* -------------------------------------------------------
      * Bottom graph: unwrapped spiral — z on x-axis, octant on y
      *   white dots = target direction (spiral_x, spiral_y)
      *   at each z-level (from z-axis cell)
