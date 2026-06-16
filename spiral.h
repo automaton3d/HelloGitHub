@@ -39,7 +39,7 @@
 #define RADIUS    (L / 2 - 2)
 
 /* --- Pulsating sweep parameters (L-invariant) --- */
-#define PULSE_TOLERANCE  ((L * L + 150) / 300)
+#define PULSE_TOLERANCE  1
 #define PULSE_STEP       (((L) + 15) / 30)
 
 /* --- CORDIC configuration (scale-invariant) ---
