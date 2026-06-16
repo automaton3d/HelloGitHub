@@ -457,103 +457,24 @@ void render_frame(SDL_Renderer *ren) {
             SDL_RenderLine(ren, cx, cy, cx, z_neg_py);
         }
 
-        /* --- Cosmetic wireframe sphere (dark gray) --- */
+        /* --- Cosmetic sphere silhouette (dark gray circle in screen space) ---
+         * In orthographic projection, a sphere's silhouette is always a
+         * perfect circle of radius R*scale, regardless of viewing angle. */
         {
             int n_seg = 64;
             int i;
-            float R = (float)RADIUS;
-            SDL_SetRenderDrawColor(ren, 30, 30, 30, 255);
+            float sil_r = (float)RADIUS * scale;
+            float prev_px2 = 0.0f, prev_py2 = 0.0f;
 
-            /* Equatorial circle (z=0 plane) */
-            {
-                float prev_px2 = 0.0f, prev_py2 = 0.0f;
-                for (i = 0; i <= n_seg; i++) {
-                    float angle = (float)i * 6.2832f / (float)n_seg;
-                    float wx = R * cosf(angle);
-                    float wy = R * sinf(angle);
-                    float ppx = cx + (wx - wy) * ax * scale;
-                    float ppy = cy + (wx + wy) * ay * scale;
-                    if (i > 0)
-                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
-                    prev_px2 = ppx;
-                    prev_py2 = ppy;
-                }
-            }
-
-            /* Meridian in XZ plane (azimuth=0): x=R*sin(t), y=0, z=R*cos(t) */
-            {
-                float prev_px2 = 0.0f, prev_py2 = 0.0f;
-                for (i = 0; i <= n_seg; i++) {
-                    float t = (float)i * 6.2832f / (float)n_seg;
-                    float wx = R * sinf(t);
-                    float wy = 0.0f;
-                    float wz = R * cosf(t);
-                    float ppx = cx + (wx - wy) * ax * scale;
-                    float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * scale;
-                    if (i > 0)
-                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
-                    prev_px2 = ppx;
-                    prev_py2 = ppy;
-                }
-            }
-
-            /* Meridian in YZ plane (azimuth=90): x=0, y=R*sin(t), z=R*cos(t) */
-            {
-                float prev_px2 = 0.0f, prev_py2 = 0.0f;
-                for (i = 0; i <= n_seg; i++) {
-                    float t = (float)i * 6.2832f / (float)n_seg;
-                    float wx = 0.0f;
-                    float wy = R * sinf(t);
-                    float wz = R * cosf(t);
-                    float ppx = cx + (wx - wy) * ax * scale;
-                    float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * scale;
-                    if (i > 0)
-                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
-                    prev_px2 = ppx;
-                    prev_py2 = ppy;
-                }
-            }
-
-            /* Meridian at azimuth=45°: x=R*sin(t)*cos45, y=R*sin(t)*sin45, z=R*cos(t) */
-            {
-                float prev_px2 = 0.0f, prev_py2 = 0.0f;
-                float c45 = 0.7071f;
-                for (i = 0; i <= n_seg; i++) {
-                    float t = (float)i * 6.2832f / (float)n_seg;
-                    float st = R * sinf(t);
-                    float wx = st * c45;
-                    float wy = st * c45;
-                    float wz = R * cosf(t);
-                    float ppx = cx + (wx - wy) * ax * scale;
-                    float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * scale;
-                    if (i > 0)
-                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
-                    prev_px2 = ppx;
-                    prev_py2 = ppy;
-                }
-            }
-
-            /* Meridian at azimuth=135°: x=R*sin(t)*cos135, y=R*sin(t)*sin135, z=R*cos(t) */
-            {
-                float prev_px2 = 0.0f, prev_py2 = 0.0f;
-                float c45 = 0.7071f;
-                for (i = 0; i <= n_seg; i++) {
-                    float t = (float)i * 6.2832f / (float)n_seg;
-                    float st = R * sinf(t);
-                    float wx = -st * c45;
-                    float wy =  st * c45;
-                    float wz = R * cosf(t);
-                    float ppx = cx + (wx - wy) * ax * scale;
-                    float ppy = cy - wz * ez * scale
-                              + (wx + wy) * ay * scale;
-                    if (i > 0)
-                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
-                    prev_px2 = ppx;
-                    prev_py2 = ppy;
-                }
+            SDL_SetRenderDrawColor(ren, 35, 35, 35, 255);
+            for (i = 0; i <= n_seg; i++) {
+                float angle = (float)i * 6.2832f / (float)n_seg;
+                float ppx = cx + sil_r * cosf(angle);
+                float ppy = cy + sil_r * sinf(angle);
+                if (i > 0)
+                    SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
+                prev_px2 = ppx;
+                prev_py2 = ppy;
             }
         }
     }
