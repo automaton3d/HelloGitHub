@@ -355,7 +355,7 @@ void render_frame(SDL_Renderer *ren) {
          * azimuth ≈ 30°, slight elevation to see z-axis */
         float ax = 0.866f;   /* cos(30°) */
         float ay = 0.5f;     /* sin(30°) */
-        float ez = 0.75f;    /* vertical z scale */
+        float ez = 0.90f;    /* vertical z scale (matches isometric xy magnitude) */
 
         /* Re-trace the spiral curve (same logic as spiral_step)
          * and render each point isometrically. */
