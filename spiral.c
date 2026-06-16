@@ -480,69 +480,29 @@ void render_frame(SDL_Renderer *ren) {
     }
 
     /* -------------------------------------------------------
-     * Panel 3 (bottom-right): XY top-view of spiral
-     *   Shows spiral points projected onto XY plane (ignoring z).
-     *   Cyan = spin, white = spin+active, gray circle = wavefront.
+     * Panels 3-5: Orthographic projections (XY, XZ, YZ)
+     *   Compute spiral points once, render in 3 panels.
      * ------------------------------------------------------- */
     {
-        int tp_x = 30 + L + 40;
-        int tp_y = L + 30;
-        int tp_sz = 200;   /* square panel */
-        float tp_scale = (float)tp_sz / (2.2f * (float)RADIUS);
-        float tp_cx = (float)tp_x + (float)tp_sz * 0.5f;
-        float tp_cy = (float)tp_y + (float)tp_sz * 0.5f;
-
-        /* Draw wavefront circle (current radius) */
-        {
-            int n_seg = 48;
-            float prev_px2 = 0.0f, prev_py2 = 0.0f;
-            SDL_SetRenderDrawColor(ren, 60, 60, 0, 255);
-            for (int i = 0; i <= n_seg; i++) {
-                float angle = (float)i * 6.2832f / (float)n_seg;
-                float px2 = tp_cx + (float)cur_r * cosf(angle) * tp_scale;
-                float py2 = tp_cy + (float)cur_r * sinf(angle) * tp_scale;
-                if (i > 0) {
-                    SDL_RenderLine(ren, prev_px2, prev_py2, px2, py2);
-                }
-                prev_px2 = px2;
-                prev_py2 = py2;
-            }
-        }
-
-        /* Draw outer boundary circle */
-        {
-            int n_seg = 48;
-            float prev_px2 = 0.0f, prev_py2 = 0.0f;
-            SDL_SetRenderDrawColor(ren, 40, 40, 40, 255);
-            for (int i = 0; i <= n_seg; i++) {
-                float angle = (float)i * 6.2832f / (float)n_seg;
-                float px2 = tp_cx + (float)RADIUS * cosf(angle) * tp_scale;
-                float py2 = tp_cy + (float)RADIUS * sinf(angle) * tp_scale;
-                if (i > 0) {
-                    SDL_RenderLine(ren, prev_px2, prev_py2, px2, py2);
-                }
-                prev_px2 = px2;
-                prev_py2 = py2;
-            }
-        }
-
-        /* Draw spiral points (XY projection) */
+        /* Pre-compute spiral point coordinates */
+        int sp_x[RADIUS + 1], sp_y[RADIUS + 1], sp_z[RADIUS + 1];
+        int sp_active[RADIUS + 1];
+        int sp_count = 0;
         {
             int z_acc2 = 0;
             int rz2 = MID;
             for (int r = 0; r <= RADIUS; r++) {
+                sp_x[r] = -(RADIUS + 10); /* sentinel: invalid */
                 if (rz2 >= 0 && rz2 < L &&
                     grid[MID][MID][rz2].r2 != INF_R2) {
                     int sx = grid[MID][MID][rz2].spiral_x;
                     int sy = grid[MID][MID][rz2].spiral_y;
-
                     int x0 = MID, y0 = MID;
                     int x1 = MID + sx, y1 = MID + sy;
                     if (x1 < 0) x1 = 0;
                     if (x1 >= L) x1 = L - 1;
                     if (y1 < 0) y1 = 0;
                     if (y1 >= L) y1 = L - 1;
-
                     int ddx = x1 > x0 ? x1 - x0 : x0 - x1;
                     int ddy = y1 > y0 ? y1 - y0 : y0 - y1;
                     int step_x = x0 < x1 ? 1 : -1;
@@ -550,7 +510,6 @@ void render_frame(SDL_Renderer *ren) {
                     int err = ddx - ddy;
                     int best_x2 = -1, best_y2 = -1;
                     int best_diff2 = RADIUS + 1;
-
                     for (;;) {
                         if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
                             grid[x0][y0][rz2].r2 != INF_R2) {
@@ -568,20 +527,12 @@ void render_frame(SDL_Renderer *ren) {
                         if (e2 > -ddy) { err -= ddy; x0 += step_x; }
                         if (e2 <  ddx) { err += ddx; y0 += step_y; }
                     }
-
                     if (best_x2 >= 0) {
-                        float px2 = tp_cx + (float)(best_x2 - MID) * tp_scale;
-                        float py2 = tp_cy + (float)(best_y2 - MID) * tp_scale;
-
-                        if (grid[best_x2][best_y2][rz2].active) {
-                            SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-                            SDL_FRect rc = { px2 - 2, py2 - 2, 5, 5 };
-                            SDL_RenderFillRect(ren, &rc);
-                        } else {
-                            SDL_SetRenderDrawColor(ren, 0, 200, 200, 255);
-                            SDL_FRect rc = { px2 - 1, py2 - 1, 3, 3 };
-                            SDL_RenderFillRect(ren, &rc);
-                        }
+                        sp_x[r] = best_x2 - MID;
+                        sp_y[r] = best_y2 - MID;
+                        sp_z[r] = rz2 - MID;
+                        sp_active[r] = grid[best_x2][best_y2][rz2].active;
+                        sp_count++;
                     }
                 }
                 z_acc2 += SPIRAL_Z_SPAN;
@@ -592,10 +543,104 @@ void render_frame(SDL_Renderer *ren) {
             }
         }
 
-        /* Cross-hair at center */
-        SDL_SetRenderDrawColor(ren, 50, 50, 50, 255);
-        SDL_RenderLine(ren, tp_cx - 5, tp_cy, tp_cx + 5, tp_cy);
-        SDL_RenderLine(ren, tp_cx, tp_cy - 5, tp_cx, tp_cy + 5);
+        int tp_sz = 155;
+        int tp_base_x = 30 + L + 40;
+        int tp_base_y = L + 30;
+        float tp_scale = (float)tp_sz / (2.2f * (float)RADIUS);
+
+        /* --- Helper: draw one projection panel --- */
+        /* Panel indices: 0=XY (top), 1=XZ (front), 2=YZ (side) */
+        int panel_idx;
+        for (panel_idx = 0; panel_idx < 3; panel_idx++) {
+            int tp_x = tp_base_x + panel_idx * (tp_sz + 5);
+            float tp_cx = (float)tp_x + (float)tp_sz * 0.5f;
+            float tp_cy = (float)tp_base_y + (float)tp_sz * 0.5f;
+
+            /* Outer boundary circle */
+            {
+                int n_seg = 48;
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                SDL_SetRenderDrawColor(ren, 35, 35, 35, 255);
+                for (int i = 0; i <= n_seg; i++) {
+                    float angle = (float)i * 6.2832f / (float)n_seg;
+                    float px2 = tp_cx + (float)RADIUS * cosf(angle) * tp_scale;
+                    float py2 = tp_cy + (float)RADIUS * sinf(angle) * tp_scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, px2, py2);
+                    prev_px2 = px2;
+                    prev_py2 = py2;
+                }
+            }
+
+            /* Wavefront circle (current radius) */
+            {
+                int n_seg = 48;
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                SDL_SetRenderDrawColor(ren, 50, 50, 0, 255);
+                for (int i = 0; i <= n_seg; i++) {
+                    float angle = (float)i * 6.2832f / (float)n_seg;
+                    float px2 = tp_cx + (float)cur_r * cosf(angle) * tp_scale;
+                    float py2 = tp_cy + (float)cur_r * sinf(angle) * tp_scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, px2, py2);
+                    prev_px2 = px2;
+                    prev_py2 = py2;
+                }
+            }
+
+            /* Axes */
+            {
+                float axis_len = (float)RADIUS * tp_scale;
+                if (panel_idx == 0) {
+                    /* XY: X right (red), Y down (green) */
+                    SDL_SetRenderDrawColor(ren, 140, 40, 40, 255);
+                    SDL_RenderLine(ren, tp_cx, tp_cy, tp_cx + axis_len, tp_cy);
+                    SDL_SetRenderDrawColor(ren, 40, 140, 40, 255);
+                    SDL_RenderLine(ren, tp_cx, tp_cy, tp_cx, tp_cy + axis_len);
+                } else if (panel_idx == 1) {
+                    /* XZ: X right (red), Z up (blue) */
+                    SDL_SetRenderDrawColor(ren, 140, 40, 40, 255);
+                    SDL_RenderLine(ren, tp_cx, tp_cy, tp_cx + axis_len, tp_cy);
+                    SDL_SetRenderDrawColor(ren, 40, 40, 180, 255);
+                    SDL_RenderLine(ren, tp_cx, tp_cy, tp_cx, tp_cy - axis_len);
+                } else {
+                    /* YZ: Y right (green), Z up (blue) */
+                    SDL_SetRenderDrawColor(ren, 40, 140, 40, 255);
+                    SDL_RenderLine(ren, tp_cx, tp_cy, tp_cx + axis_len, tp_cy);
+                    SDL_SetRenderDrawColor(ren, 40, 40, 180, 255);
+                    SDL_RenderLine(ren, tp_cx, tp_cy, tp_cx, tp_cy - axis_len);
+                }
+            }
+
+            /* Spiral points */
+            for (int r = 0; r <= RADIUS; r++) {
+                if (sp_x[r] < -RADIUS) continue; /* invalid marker */
+                float scr_x, scr_y;
+                if (panel_idx == 0) {
+                    /* XY top view */
+                    scr_x = tp_cx + (float)sp_x[r] * tp_scale;
+                    scr_y = tp_cy + (float)sp_y[r] * tp_scale;
+                } else if (panel_idx == 1) {
+                    /* XZ front view */
+                    scr_x = tp_cx + (float)sp_x[r] * tp_scale;
+                    scr_y = tp_cy - (float)sp_z[r] * tp_scale;
+                } else {
+                    /* YZ side view */
+                    scr_x = tp_cx + (float)sp_y[r] * tp_scale;
+                    scr_y = tp_cy - (float)sp_z[r] * tp_scale;
+                }
+
+                if (sp_active[r]) {
+                    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+                    SDL_FRect rc = { scr_x - 2, scr_y - 2, 5, 5 };
+                    SDL_RenderFillRect(ren, &rc);
+                } else {
+                    SDL_SetRenderDrawColor(ren, 0, 200, 200, 255);
+                    SDL_FRect rc = { scr_x - 1, scr_y - 1, 3, 3 };
+                    SDL_RenderFillRect(ren, &rc);
+                }
+            }
+        }
     }
 
     /* -------------------------------------------------------
