@@ -457,26 +457,103 @@ void render_frame(SDL_Renderer *ren) {
             SDL_RenderLine(ren, cx, cy, cx, z_neg_py);
         }
 
-        /* --- Equatorial circle (cosmetic, z=MID plane) --- */
+        /* --- Cosmetic wireframe sphere (dark gray) --- */
         {
             int n_seg = 64;
-            float prev_px = 0.0f, prev_py = 0.0f;
             int i;
-            SDL_SetRenderDrawColor(ren, 60, 60, 60, 255);
-            for (i = 0; i <= n_seg; i++) {
-                float angle = (float)i * 6.2832f / (float)n_seg;
-                float ca = cosf(angle);
-                float sa = sinf(angle);
-                float wx = (float)RADIUS * ca;
-                float wy = (float)RADIUS * sa;
-                /* project isometrically (dz=0 for equator) */
-                float ppx = cx + (wx - wy) * ax * scale;
-                float ppy = cy + (wx + wy) * ay * 0.5f * scale;
-                if (i > 0) {
-                    SDL_RenderLine(ren, prev_px, prev_py, ppx, ppy);
+            float R = (float)RADIUS;
+            SDL_SetRenderDrawColor(ren, 30, 30, 30, 255);
+
+            /* Equatorial circle (z=0 plane) */
+            {
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                for (i = 0; i <= n_seg; i++) {
+                    float angle = (float)i * 6.2832f / (float)n_seg;
+                    float wx = R * cosf(angle);
+                    float wy = R * sinf(angle);
+                    float ppx = cx + (wx - wy) * ax * scale;
+                    float ppy = cy + (wx + wy) * ay * 0.5f * scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
+                    prev_px2 = ppx;
+                    prev_py2 = ppy;
                 }
-                prev_px = ppx;
-                prev_py = ppy;
+            }
+
+            /* Meridian in XZ plane (azimuth=0): x=R*sin(t), y=0, z=R*cos(t) */
+            {
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                for (i = 0; i <= n_seg; i++) {
+                    float t = (float)i * 6.2832f / (float)n_seg;
+                    float wx = R * sinf(t);
+                    float wy = 0.0f;
+                    float wz = R * cosf(t);
+                    float ppx = cx + (wx - wy) * ax * scale;
+                    float ppy = cy - wz * ez * scale
+                              + (wx + wy) * ay * 0.5f * scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
+                    prev_px2 = ppx;
+                    prev_py2 = ppy;
+                }
+            }
+
+            /* Meridian in YZ plane (azimuth=90): x=0, y=R*sin(t), z=R*cos(t) */
+            {
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                for (i = 0; i <= n_seg; i++) {
+                    float t = (float)i * 6.2832f / (float)n_seg;
+                    float wx = 0.0f;
+                    float wy = R * sinf(t);
+                    float wz = R * cosf(t);
+                    float ppx = cx + (wx - wy) * ax * scale;
+                    float ppy = cy - wz * ez * scale
+                              + (wx + wy) * ay * 0.5f * scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
+                    prev_px2 = ppx;
+                    prev_py2 = ppy;
+                }
+            }
+
+            /* Meridian at azimuth=45°: x=R*sin(t)*cos45, y=R*sin(t)*sin45, z=R*cos(t) */
+            {
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                float c45 = 0.7071f;
+                for (i = 0; i <= n_seg; i++) {
+                    float t = (float)i * 6.2832f / (float)n_seg;
+                    float st = R * sinf(t);
+                    float wx = st * c45;
+                    float wy = st * c45;
+                    float wz = R * cosf(t);
+                    float ppx = cx + (wx - wy) * ax * scale;
+                    float ppy = cy - wz * ez * scale
+                              + (wx + wy) * ay * 0.5f * scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
+                    prev_px2 = ppx;
+                    prev_py2 = ppy;
+                }
+            }
+
+            /* Meridian at azimuth=135°: x=R*sin(t)*cos135, y=R*sin(t)*sin135, z=R*cos(t) */
+            {
+                float prev_px2 = 0.0f, prev_py2 = 0.0f;
+                float c45 = 0.7071f;
+                for (i = 0; i <= n_seg; i++) {
+                    float t = (float)i * 6.2832f / (float)n_seg;
+                    float st = R * sinf(t);
+                    float wx = -st * c45;
+                    float wy =  st * c45;
+                    float wz = R * cosf(t);
+                    float ppx = cx + (wx - wy) * ax * scale;
+                    float ppy = cy - wz * ez * scale
+                              + (wx + wy) * ay * 0.5f * scale;
+                    if (i > 0)
+                        SDL_RenderLine(ren, prev_px2, prev_py2, ppx, ppy);
+                    prev_px2 = ppx;
+                    prev_py2 = ppy;
+                }
             }
         }
     }
