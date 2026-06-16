@@ -229,16 +229,27 @@ static void draw_spiral_line(int z, int sx, int sy) {
     int step_y = y0 < y1 ? 1 : -1;
     int err = dx - dy;
 
-    /* Walk the Bresenham line and track the LAST valid cell
-     * (closest to sphere surface).  Mark only that single cell.
-     * This guarantees exactly 1 spin point per z-level. */
-    int last_x = -1, last_y = -1;
+    /* Walk the Bresenham line and find the cell whose r2 is closest
+     * to RADIUS^2.  This places spin on the SPHERE surface (not a
+     * cylinder), so the helix passes through the poles and the equator.
+     * At the equator (dz=0): the point is at the outer edge (xy_dist≈RADIUS)
+     * At the poles  (dz≈R_MAX): the point is near center (xy_dist≈0) */
+    unsigned int target_r2 = (unsigned int)RADIUS * (unsigned int)RADIUS;
+    int best_x = -1, best_y = -1;
+    unsigned int best_diff = INF_R2;
 
     for (;;) {
         if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
             grid[x0][y0][z].r2 != INF_R2) {
-            last_x = x0;
-            last_y = y0;
+            unsigned int cell_r2 = grid[x0][y0][z].r2;
+            unsigned int diff = (cell_r2 > target_r2)
+                              ? (cell_r2 - target_r2)
+                              : (target_r2 - cell_r2);
+            if (diff < best_diff) {
+                best_diff = diff;
+                best_x = x0;
+                best_y = y0;
+            }
         }
 
         if (x0 == x1 && y0 == y1) break;
@@ -249,9 +260,9 @@ static void draw_spiral_line(int z, int sx, int sy) {
         if (e2 <  dx) { err += dx; y0 += step_y; }
     }
 
-    /* Mark only the outermost reachable cell */
-    if (last_x >= 0) {
-        grid[last_x][last_y][z].spin = 1;
+    /* Mark the cell closest to the sphere surface */
+    if (best_x >= 0) {
+        grid[best_x][best_y][z].spin = 1;
     }
 }
 
@@ -349,7 +360,7 @@ void render_frame(SDL_Renderer *ren) {
             int sy = grid[MID][MID][z].spiral_y;
             int dz = z - MID;
 
-            /* trace Bresenham line, find outermost valid cell */
+            /* trace Bresenham line, find cell closest to sphere surface */
             int x0 = MID, y0 = MID;
             int x1 = MID + sx, y1 = MID + sy;
             if (x1 < 0) x1 = 0; if (x1 >= L) x1 = L - 1;
@@ -360,13 +371,22 @@ void render_frame(SDL_Renderer *ren) {
             int step_x = x0 < x1 ? 1 : -1;
             int step_y = y0 < y1 ? 1 : -1;
             int err = ddx - ddy;
-            int last_x = -1, last_y = -1;
+
+            unsigned int tgt_r2 = (unsigned int)RADIUS * (unsigned int)RADIUS;
+            int best_x = -1, best_y = -1;
+            unsigned int best_diff = INF_R2;
 
             for (;;) {
                 if (x0 >= 0 && x0 < L && y0 >= 0 && y0 < L &&
                     grid[x0][y0][z].r2 != INF_R2) {
-                    last_x = x0;
-                    last_y = y0;
+                    unsigned int cr2 = grid[x0][y0][z].r2;
+                    unsigned int df = (cr2 > tgt_r2)
+                                    ? (cr2 - tgt_r2) : (tgt_r2 - cr2);
+                    if (df < best_diff) {
+                        best_diff = df;
+                        best_x = x0;
+                        best_y = y0;
+                    }
                 }
                 if (x0 == x1 && y0 == y1) break;
                 int e2 = err + err;
@@ -374,15 +394,15 @@ void render_frame(SDL_Renderer *ren) {
                 if (e2 <  ddx) { err += ddx; y0 += step_y; }
             }
 
-            /* render only the outermost point (1 per z-level) */
-            if (last_x >= 0) {
-                int ldx = last_x - MID;
-                int ldy = last_y - MID;
+            /* render the sphere-surface point (2x2 for visibility) */
+            if (best_x >= 0) {
+                int ldx = best_x - MID;
+                int ldy = best_y - MID;
                 float px = cx + ((float)ldx - (float)ldy) * ax * scale;
                 float py = cy - (float)dz * ez * scale
                          + ((float)ldx + (float)ldy) * ay * 0.5f * scale;
 
-                if (grid[last_x][last_y][z].active) {
+                if (grid[best_x][best_y][z].active) {
                     SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
                 } else {
                     int bright = 150 + (ldx + ldy) / 4;
@@ -391,7 +411,6 @@ void render_frame(SDL_Renderer *ren) {
                     SDL_SetRenderDrawColor(ren,
                         0, (Uint8)bright, (Uint8)bright, 255);
                 }
-                /* draw 2x2 dot for visibility */
                 SDL_RenderPoint(ren, px, py);
                 SDL_RenderPoint(ren, px + 1.0f, py);
                 SDL_RenderPoint(ren, px, py + 1.0f);
