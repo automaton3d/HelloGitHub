@@ -1,0 +1,41 @@
+# Makefile.nmake — build the CA (MSVC + nvcc via nmake)
+#
+# Usage:
+#   nmake /f Makefile.nmake              # CUDA build
+#   nmake /f Makefile.nmake CPU_ONLY=1   # CPU-only build
+#   nmake /f Makefile.nmake clean
+
+CC     = cl
+NVCC   = nvcc
+CFLAGS = /Ox /W3
+
+SDL_INC = /I"E:\vcpkg\installed\x64-windows\include"
+SDL_LIB = "E:\vcpkg\installed\x64-windows\lib\SDL3.lib"
+
+CUDA_LIB = /LIBPATH:"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\lib\x64"
+
+NVCFLAGS = -O2 -DNO_SDL -DUSE_CUDA
+
+!IF DEFINED(CPU_ONLY)
+
+# --- CPU-only build (no CUDA) ---
+all: mytry.exe
+
+mytry.exe: mytry.c pulsating.h
+	$(CC) $(CFLAGS) /Fe:mytry.exe mytry.c $(SDL_INC) $(SDL_LIB)
+
+!ELSE
+
+# --- CUDA build ---
+all: mytry_cuda.exe
+
+ca_cuda.obj: ca_cuda.cu ca_cuda.h pulsating.h
+	$(NVCC) -c $(NVCFLAGS) ca_cuda.cu -o ca_cuda.obj
+
+mytry_cuda.exe: mytry.c pulsating.h ca_cuda.h ca_cuda.obj
+	$(CC) $(CFLAGS) /DUSE_CUDA /Fe:mytry_cuda.exe mytry.c ca_cuda.obj $(SDL_INC) $(SDL_LIB) /link $(CUDA_LIB) cudart.lib
+
+!ENDIF
+
+clean:
+	-del /q *.obj *.exe 2>nul
