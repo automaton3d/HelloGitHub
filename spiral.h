@@ -1,11 +1,12 @@
 /*
  * spiral.h — header for emergent spiral CA on pulsating wavefront
  *
- * The spiral emerges from two purely-additive mechanisms:
+ * The spiral is a cylindrical helix traced by a walker:
  *   1) BFS wavefront propagation (sum-of-odds for r2)
- *   2) CORDIC micro-rotation propagated through BFS z-transitions
- *      + Bresenham accumulator to distribute rotations evenly
- *   3) Bresenham line drawing to mark spin=1 along the spiral ray
+ *   2) Walker advances 1 cell/tick along a cylinder of radius R_CYL
+ *      centered at (CYL_X0, CYL_Y0), parallel to z
+ *   3) Bresenham accumulator interleaves planar (rotation) and
+ *      vertical (climb) steps for correct pitch
  *
  * Runtime operations: addition, subtraction, shift, comparison only.
  * No multiplication, no division, no lookup tables, no floats.
@@ -42,47 +43,27 @@
 #define PULSE_TOLERANCE  1
 #define PULSE_STEP       (((L) + 15) / 30)
 
-/* --- CORDIC configuration (scale-invariant) ---
+/* --- Cylindrical helix parameters ---
  *
- * CORDIC_SHIFT determines the micro-rotation angle per step:
- *   angle_per_step = arctan(2^{-CORDIC_SHIFT})
+ * The XY projection of the parametric spherical spiral is
+ * approximately circular. Best-fit circle (exact, L-independent):
+ *   center = (-0.0195*r_max, +0.1810*r_max)  ≈ (0, R_CYL)
+ *   radius = 0.18103*r_max                    ≈ R_CYL
  *
- * CORDIC_N = total CORDIC steps for a half turn (pi radians):
- *   CORDIC_N ≈ pi * 2^CORDIC_SHIFT
- *
- * A Bresenham accumulator distributes CORDIC_N rotations over
- * R_MAX z-levels, so the total rotation from pole to equator
- * is always ~pi regardless of L.
- *
- * The shift is chosen so that CORDIC_N >> 10 (enough resolution)
- * and arctan(2^{-k}) is small (good circle approximation).
+ * Compile-time integer approximation: 93/512 ≈ 0.18164 (<0.4% error).
+ * Multiplications below are compile-time constants, not runtime.
  */
-#if R_MAX >= 2048
-#define CORDIC_SHIFT 10
-#elif R_MAX >= 1024
-#define CORDIC_SHIFT 9
-#elif R_MAX >= 512
-#define CORDIC_SHIFT 8
-#elif R_MAX >= 256
-#define CORDIC_SHIFT 7
-#elif R_MAX >= 128
-#define CORDIC_SHIFT 6
-#elif R_MAX >= 64
-#define CORDIC_SHIFT 5
-#elif R_MAX >= 32
-#define CORDIC_SHIFT 4
-#else
-#define CORDIC_SHIFT 3
-#endif
+#define R_CYL       ((R_MAX * 93 + 256) >> 9)
+#define CYL_X0      MID
+#define CYL_Y0      (MID + R_CYL)
+#define R_CYL_SQ    (R_CYL * R_CYL)
 
-/* pi * 2^k ≈ (314 << k) / 100  (compile-time integer arithmetic) */
-#define CORDIC_N  ((314 << CORDIC_SHIFT) / 100)
-
-/* Spiral z-span: how many z-levels the spiral covers.
- * Uses ~3/4 of RADIUS to keep xy_dist > 0 at all points,
- * giving approximately 133° of CORDIC rotation for L=221.
- * Formula: shift + subtract only. */
-#define SPIRAL_Z_SPAN  (RADIUS - (RADIUS >> 2))
+/* Discrete (Manhattan) circumference of radius-R_CYL circle.
+ * On a von Neumann grid, axial steps cover 2πR Euclidean distance
+ * in approximately 8R steps (correction factor 4/π ≈ 1.273). */
+#define CYL_CIRC    (R_CYL << 3)
+/* Total walker steps = circumference (planar) + height (z) */
+#define CYL_TOTAL   (CYL_CIRC + R_MAX)
 
 /* --- Display --- */
 #define WINDOW_W  (L + 500 + 80)
@@ -95,16 +76,19 @@
  * Cell struct — minimal for spiral CA
  * ================================================================= */
 typedef struct {
-    /* BFS wavefront geometry */
     int r;                /* integer radius from center */
     unsigned int r2;      /* Euclidean distance-squared (INF_R2 = unvisited) */
     unsigned char active; /* 1 if on pulsating shell */
     unsigned char spin;   /* 1 if on the spiral arm */
-    /* CORDIC spiral state (propagated by BFS) */
-    int spiral_x;         /* direction vector x-component */
-    int spiral_y;         /* direction vector y-component */
-    int spiral_acc;       /* Bresenham accumulator for CORDIC stepping */
 } Cell;
+
+/* --- Spiral point storage (for walker + rendering) --- */
+typedef struct { int x, y, z; } SpiralPt;
+
+#define MAX_SPIRAL_PTS (R_MAX * 3)
+extern SpiralPt spiral_pts[];
+extern int spiral_n;
+extern int spiral_done;
 
 /* --- Grid pointers (heap-allocated) --- */
 extern Cell (*grid)[L][L];
@@ -153,6 +137,7 @@ SINLINE unsigned int pulse_from_time(unsigned int t) {
 void init(void);
 void step_all(void);
 void pulse_step(void);
+void spiral_init(void);
 void spiral_step(void);
 
 #ifndef NO_SDL
